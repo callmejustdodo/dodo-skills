@@ -1,0 +1,14 @@
+# Secrets / personal config — never commit
+.env
+
+# Runtime artifacts
+voice-memo-to-notion-runs/
+*.raw.json
+duration_sec.txt
+
+# OS / editor cruft
+.DS_Store
+*.swp
+
+# OMC runtime state
+.omc/
