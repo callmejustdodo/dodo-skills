@@ -1,6 +1,6 @@
 ---
 name: voice-memo-to-notion
-description: Transcribe an audio file via ElevenLabs Scribe v2 (diarized for meetings, plain for lectures), summarize it, and create a Notion page (summary + raw transcript) under the configured database. Use when the user provides an audio/video file and asks to "send it to Notion", "log this meeting", "transcribe and save to Notion", or similar audio→Notion pipeline requests.
+description: Transcribe an audio file via ElevenLabs Scribe v2 (diarized for meetings, plain for lectures), summarize it, and create a Notion page (summary + raw transcript) under the configured database. Can pull recordings straight from the macOS Apple Voice Memos app (auto-reads the latest/by-date memo from its local library — no manual export needed), or take an explicit audio/video file. Use when the user provides a file or references a voice memo and asks to "send it to Notion", "log this meeting", "transcribe my latest voice memo", "transcribe and save to Notion", or similar audio→Notion pipeline requests.
 ---
 
 # Voice Memo → Notion
