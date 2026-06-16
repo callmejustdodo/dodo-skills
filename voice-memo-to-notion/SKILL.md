@@ -98,8 +98,10 @@ set -a; source ~/Developer/dodo-skills/.env; set +a
 ```
 
 This defines `$NOTION_WS_SCENIC`, `$NOTION_WS_DODO`, `$NOTION_USER`, `$NOTION_1ON1_DS`,
-`$NOTION_1ON1_DB`, `$NOTION_1ON1_PARENT_PAGE`, `$NOTION_MEETING_DB`, `$NOTION_MEETING_DS`,
-`$NOTION_DEFAULT_DB`, `$NOTION_DEFAULT_DS`. If any are unset, the `.env` is missing —
+`$NOTION_1ON1_DB`, `$NOTION_1ON1_PARENT_PAGE`, `$NOTION_SCENIC_MEETING_DB`,
+`$NOTION_SCENIC_MEETING_DS` (the **default** meeting target, in Scenic),
+`$NOTION_MEETING_DB`, `$NOTION_MEETING_DS`, `$NOTION_DEFAULT_DB`, `$NOTION_DEFAULT_DS`
+(the last four are legacy DODO-SPACE DBs). If any are unset, the `.env` is missing —
 tell the user to `cp .env.example .env` and fill it in.
 
 ### Workspace (pinned)
@@ -120,9 +122,12 @@ This env var overrides the config default for the whole session. Verify with
 isn't in `~/.config/notion/workspaces.json`, the user must `ntn login` to it first.
 (Stored workspace ids: Scenic = `$NOTION_WS_SCENIC`, DODO-SPACE = `$NOTION_WS_DODO`.)
 
-The legacy `Meeting Notes` DBs (회의록 / default) below live in **DODO-SPACE**, not
-Scenic — if you route there, re-pin `NOTION_WORKSPACE_ID` to `$NOTION_WS_DODO` for
-that run, or every call 404s.
+**As of 2026-06-14 the default target for meetings/미팅/everything else is the
+Scenic `Meeting Notes` DB** (`$NOTION_SCENIC_MEETING_DS`) — created with the default
+Scenic pin above, no re-pin needed. The legacy `Meeting Notes` DBs (회의록 / old default)
+live in **DODO-SPACE** and are used **only when the user explicitly routes there** (or
+passes an explicit `database_id`); for those, re-pin `NOTION_WORKSPACE_ID` to
+`$NOTION_WS_DODO` for that run, or every call 404s.
 
 ### Routing
 
@@ -135,17 +140,31 @@ that run, or every call 404s.
   - **Data source (create pages here): `$NOTION_1ON1_DS`**
   - Schema: `이름` (title), `Date` (date), `상대` (select — partner name options;
     add new options as needed). Set `상대` to the 1on1 partner. Use diarize mode.
-- **Meeting notes (회의록):** title/label contains `회의록` (case-insensitive).
-  - Database: id `$NOTION_MEETING_DB`,
-    URL https://www.notion.so/$NOTION_USER/$NOTION_MEETING_DB
-  - Data source (where pages are created): `$NOTION_MEETING_DS`
-- **Default / everything else:** use the legacy Meeting Notes DB.
-  - Database: id `$NOTION_DEFAULT_DB`,
-    URL https://www.notion.so/$NOTION_USER/$NOTION_DEFAULT_DB
-  - Data source: `$NOTION_DEFAULT_DS`
+- **Default / everything else (회의/미팅 and anything not matched above):** use the
+  **Scenic `Meeting Notes` DB** (the default since 2026-06-14, in Scenic).
+  - Workspace: **Scenic** (`$NOTION_WS_SCENIC`) — already pinned by default, no re-pin.
+  - **Data source (create pages here): `$NOTION_SCENIC_MEETING_DS`**
+  - Database id `$NOTION_SCENIC_MEETING_DB`
+  - Schema: `Meeting name` (title), `Date`, `Attendees` (people), `Category` (multi_select).
+- **Legacy 회의록 / default (DODO-SPACE) — only on explicit request:** use **only** when
+  the user explicitly asks to route to the old DODO-SPACE DBs. Re-pin
+  `NOTION_WORKSPACE_ID=$NOTION_WS_DODO` for that run.
+  - 회의록: `$NOTION_MEETING_DS` (db `$NOTION_MEETING_DB`)
+  - old default: `$NOTION_DEFAULT_DS` (db `$NOTION_DEFAULT_DB`)
 
 Surface the chosen target to the user before creating the page. If the user
 passes an explicit `database_id` option, that always wins over the routing rule.
+
+**Public vs private — ALWAYS ASK before creating (user instruction, 2026-06-14).**
+After routing but before building the page, ask the user whether the page should be
+**퍼블릭 (team-shared)** or **프라이빗 (only me)**:
+- **퍼블릭 (team-shared):** create in the routed Scenic `Meeting Notes` DB
+  (`$NOTION_SCENIC_MEETING_DS`) — visible to the team. This is the normal meeting path.
+- **프라이빗 (only me):** do **not** use the shared DB. Ask the user for the private
+  parent (a 🔒 page only they can see) and create the page under it
+  (`parent: { "page_id": <private_page_id> }`), or offer to create a new private page
+  first. (1on1s already route to the private `1on1 Notes` DB and don't need this prompt.)
+Surface the picked visibility + DB target together with the mode before billing.
 
 ### Transcription mode routing
 
@@ -190,12 +209,14 @@ Run these once at the top of the workflow and bail out with a clear message if a
    `export NOTION_WORKSPACE_ID=$NOTION_WS_SCENIC`. Do this
    before any `ntn api` call and keep it exported for every page-create/PATCH in
    this run. Confirm with `ntn api v1/users/me` → `workspace_name` = `Scenic`.
-   Re-pin to DODO-SPACE (`$NOTION_WS_DODO`) only when routing to the legacy 회의록 /
-   Meeting Notes DBs, or if the user passes an explicit `database_id` elsewhere.
+   Meetings/미팅 now create in the **Scenic** `Meeting Notes` DB by default — no re-pin.
+   Re-pin to DODO-SPACE (`$NOTION_WS_DODO`) only when the user **explicitly** routes to
+   the legacy DODO 회의록 / default DBs, or passes an explicit `database_id` there.
 5. `command -v python3` resolves and `python3 -c 'import elevenlabs'` succeeds. If not, run `python3 -m pip install --user elevenlabs` (or `uv pip install elevenlabs`). On macOS, the system `python3` is Apple's Xcode build — `--user` install is the safe fallback.
 6. `command -v ffprobe` resolves (used for duration → cost estimate; the audio itself goes straight to Scribe v2 without re-encoding). On macOS: `brew install ffmpeg`.
 7. **Confirm language with the user.** Always ask: *"녹음 언어가 한국어 맞나요? (다른 언어면 알려주세요)"* — even when title looks Korean. The wrong language hint produces broken transcripts; assuming silently has burned us before. Default suggestion is `kor`. Set `LANG_HINT` accordingly.
 8. **Confirm transcription mode with the user** if title doesn't clearly indicate it (see "Transcription mode routing"). Surface picked mode + DB target before billing.
+8.5. **Ask public vs private before creating the page** (user instruction, 2026-06-14; see "Public vs private" under Routing). Default suggestion: 퍼블릭(team-shared) → Scenic `Meeting Notes` DB. If 프라이빗, get/create the private parent page and create under it instead. Skip for 1on1 routing (already private). Surface the picked visibility + DB target alongside the mode.
 9. **For diarize mode: ask the user for the participant list before transcribing.** This is critical — pass the names as `keyterms` to Scribe v2 (most effective bias against name mishears) AND use them for `speaker_X → 실명` mapping in the merge step. Always pre-include **도현 (the user's name, per `user_name.md` memory)** as a default participant; prompt the user only for the *other* participants. Phrase: *"이 회의에 도현 외에 누가 참여하셨나요? (이름을 콤마로 구분해 알려주세요)"*. Empirically: skipping this step or relying on title-derived keyterms alone has produced repeated wrong mappings — Scribe drifts 도현 → 지훈/지은, 지운 → 두윤, 규희 → 규인 even with partial keyterms. Confirming up front saves an entire archive+rebuild cycle. Add any company/brand names mentioned in the title (e.g. 마리트, 앤트, D&C) to keyterms as well. Skip this step for plain transcribe mode (lectures don't need speaker mapping).
 10. **Cost preview — show estimated cost to the user and get explicit confirmation before transcribing.** See "Cost estimation" below.
 
@@ -500,9 +521,11 @@ Match the summary language to the audio language. Korean audio → Korean minute
 
 Schema is known — no discovery needed. Defaults:
 
-- `parent`: `{ "data_source_id": "<DATA_SOURCE_ID>" }` — picked by the Routing
-  rule above (회의록 → `$NOTION_MEETING_DS`, else
-  `$NOTION_DEFAULT_DS`). Override with `database_id` option.
+- `parent`: picked by the Routing rule above. **Default (퍼블릭 meeting):**
+  `{ "data_source_id": "$NOTION_SCENIC_MEETING_DS" }` (Scenic Meeting Notes).
+  **프라이빗:** `{ "page_id": "<private_parent_page_id>" }` instead.
+  **Legacy DODO (explicit only):** `$NOTION_MEETING_DS` / `$NOTION_DEFAULT_DS`.
+  Override with the `database_id` option when supplied.
 - `properties.Meeting name.title[0].text.content`: page title (audio filename without ext, or user override)
 - `properties.Date.date.start`: today's date in `YYYY-MM-DD` (use `date +%F`)
 
@@ -678,4 +701,25 @@ If the actual cost differs from the estimate by > 20 %, call it out — usually 
 - **`ntn api` reads the body from stdin, not `-d @file`:** pass JSON via `cat payload.json | ntn api v1/pages -X POST`. The `-d` flag only accepts an inline JSON string.
 - **Inserting blocks mid-page (`after` field) requires the 2022-06-28 Notion version:** the current default rejects `after` on `PATCH v1/blocks/<id>/children`. Use `--notion-version 2022-06-28` when you need positional insertion (e.g. adding an Action Plan into an existing page).
 - **Voice Memos titles live in `ZENCRYPTEDTITLE`, not `ZCUSTOMLABEL`:** despite the name, the value reads as plaintext through SQLite. `ZCUSTOMLABEL` is usually a default ISO timestamp.
-- **Pin `NOTION_WORKSPACE_ID=$NOTION_WS_DODO` (DODO-SPACE) for this skill — the `ntn` default workspace is not stable.** On the 영근이형 미팅 run, every `ntn api` call 404'd (`Could not find data_source $NOTION_DEFAULT_DS`) because the CLI default had drifted to the Scenic workspace (a prior run had set it via `NOTION_WORKSPACE_ID`, and `ntn` persists the last-used value into `~/.config/notion/config.json` → `defaultWorkspaceIds.prod`). The target DBs live in DODO-SPACE (`$NOTION_USER`), so export `NOTION_WORKSPACE_ID=$NOTION_WS_DODO` at the top of the run and keep it exported for every create/PATCH. The DB IDs/data-source IDs are correct — they're just workspace-scoped, so they're invisible until the right workspace is selected. Verify with `ntn api v1/users/me` (`workspace_name` should be `DODO-SPACE`).
+- **Default is now Scenic, not DODO-SPACE (changed 2026-06-14).** Meetings/미팅/everything
+  else create in the **Scenic `Meeting Notes` DB** (`$NOTION_SCENIC_MEETING_DS`, db
+  `$NOTION_SCENIC_MEETING_DB`) under the default Scenic pin — no re-pin. On the Aow 작가님
+  미팅 run the page was first (wrongly) created in DODO-SPACE; the user asked to make Scenic
+  the standing default and to **always ask 퍼블릭(team-shared) vs 프라이빗(only-me)** before
+  creating. The legacy DODO 회의록/default DBs (`$NOTION_MEETING_DS` / `$NOTION_DEFAULT_DS`)
+  are now used **only on explicit request** — and only then re-pin
+  `NOTION_WORKSPACE_ID=$NOTION_WS_DODO` for that run.
+- **The `ntn` default workspace is not stable — always pin explicitly.** `ntn` persists the
+  last-used `NOTION_WORKSPACE_ID` into `~/.config/notion/config.json` →
+  `defaultWorkspaceIds.prod`, so a prior run can drift the default and make every `ntn api`
+  call 404 (`Could not find data_source`) because the data-source id is invisible from the
+  wrong workspace. Export the intended `NOTION_WORKSPACE_ID` at the top of the run, keep it
+  exported for every create/PATCH, and verify with `ntn api v1/users/me`.
+- **Moving a page between workspaces = recreate + trash, not edit.** A page can't be reparented
+  across workspaces via the API. To move it: rebuild the payloads pointing at the new
+  data_source/parent, POST the new page (+sub-page batches), then archive the old one with
+  `{"in_trash": true}` (not `archived`). On the Aow run this moved the note DODO→Scenic cleanly.
+- **Avoid heredocs inside the skill's bash steps when the harness may auto-background the call.**
+  A backgrounded `bash` with inline `<<'PY'` heredocs silently stalled mid-script (only the first
+  line printed) on the Aow run. Prefer a written `.sh` file run with `bash file.sh`, or `python3 -c`
+  one-liners, and write results/IDs to a file you can read back.
