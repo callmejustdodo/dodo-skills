@@ -21,10 +21,11 @@ Generates a meeting follow-up email in the established format (sent by `$FOLLOWU
 Personal values live in the repo `.env`, not here. Load them before saving the draft:
 
 ```bash
-set -a; source ~/Developer/dodo-skills/.env; set +a
+SKILLS_REPO="$(dirname "$(readlink ~/.claude/skills/followup-mail)")"
+set -a; source "$SKILLS_REPO/.env"; set +a
 ```
 
-- `FOLLOWUP_FROM_NAME` — signature name (e.g. 박도현).
+- `FOLLOWUP_FROM_NAME` — signature name (e.g. 홍길동).
 - `FOLLOWUP_TO` — default recipient when the user doesn't name one.
 - `FOLLOWUP_SUBJECT_TAG` — subject prefix, rendered as `[$FOLLOWUP_SUBJECT_TAG]`.
 
@@ -71,7 +72,7 @@ Fill `TEMPLATE.md` in this directory. Hard rules:
 ```
 [{$FOLLOWUP_SUBJECT_TAG}] {미팅 성격} 팔로업
 ```
-e.g. `[Scenic] 미팅 팔로업`, `[Scenic] 금일 미팅 내용 정리 및 팔로업`
+e.g. `[MyCompany] 미팅 팔로업`, `[MyCompany] 금일 미팅 내용 정리 및 팔로업`
 
 ### 4. Show the draft, then save (do NOT send)
 

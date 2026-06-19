@@ -94,46 +94,47 @@ All workspace / database / data-source IDs live in the repo `.env`, not inline h
 Load them once at the top of the run, before any `ntn` call:
 
 ```bash
-set -a; source ~/Developer/dodo-skills/.env; set +a
+SKILLS_REPO="$(dirname "$(readlink ~/.claude/skills/voice-memo-to-notion)")"
+set -a; source "$SKILLS_REPO/.env"; set +a
 ```
 
-This defines `$NOTION_WS_SCENIC`, `$NOTION_WS_DODO`, `$NOTION_USER`, `$NOTION_1ON1_DS`,
-`$NOTION_1ON1_DB`, `$NOTION_1ON1_PARENT_PAGE`, `$NOTION_SCENIC_MEETING_DB`,
-`$NOTION_SCENIC_MEETING_DS` (the **default** meeting target, in Scenic),
+This defines `$NOTION_WS_PRIMARY`, `$NOTION_WS_LEGACY`, `$NOTION_USER`, `$NOTION_1ON1_DS`,
+`$NOTION_1ON1_DB`, `$NOTION_1ON1_PARENT_PAGE`, `$NOTION_PRIMARY_MEETING_DB`,
+`$NOTION_PRIMARY_MEETING_DS` (the **default** meeting target, in the primary workspace),
 `$NOTION_MEETING_DB`, `$NOTION_MEETING_DS`, `$NOTION_DEFAULT_DB`, `$NOTION_DEFAULT_DS`
-(the last four are legacy DODO-SPACE DBs). If any are unset, the `.env` is missing —
+(the last four are legacy workspace DBs). If any are unset, the `.env` is missing —
 tell the user to `cp .env.example .env` and fill it in.
 
 ### Workspace (pinned)
 
-**Default workspace is Scenic** (`$NOTION_WS_SCENIC`) as of 2026-06-07 — the user asked
-to make Scenic the default going forward. The `ntn` CLI's default workspace is **not
-stable** — it gets overwritten to whatever workspace `NOTION_WORKSPACE_ID` last
-targeted, so every `ntn api` call 404s with `Could not find data_source` if the pin
-drifts. **Always pin the workspace for this skill** by exporting it once at the top of
-the run, before any `ntn` call:
+**Default workspace is the primary workspace** (`$NOTION_WS_PRIMARY`). The `ntn` CLI's
+default workspace is **not stable** — it gets overwritten to whatever workspace
+`NOTION_WORKSPACE_ID` last targeted, so every `ntn api` call 404s with
+`Could not find data_source` if the pin drifts. **Always pin the workspace for this
+skill** by exporting it once at the top of the run, before any `ntn` call:
 
 ```bash
-export NOTION_WORKSPACE_ID=$NOTION_WS_SCENIC  # Scenic (default)
+export NOTION_WORKSPACE_ID=$NOTION_WS_PRIMARY
 ```
 
 This env var overrides the config default for the whole session. Verify with
-`ntn api v1/users/me` → `bot.workspace_name` should read `Scenic`. If the workspace
-isn't in `~/.config/notion/workspaces.json`, the user must `ntn login` to it first.
-(Stored workspace ids: Scenic = `$NOTION_WS_SCENIC`, DODO-SPACE = `$NOTION_WS_DODO`.)
+`ntn api v1/users/me` → `bot.workspace_name` should match your primary workspace.
+If the workspace isn't in `~/.config/notion/workspaces.json`, the user must
+`ntn login` to it first.
+(Stored workspace ids: primary = `$NOTION_WS_PRIMARY`, legacy = `$NOTION_WS_LEGACY`.)
 
-**As of 2026-06-14 the default target for meetings/미팅/everything else is the
-Scenic `Meeting Notes` DB** (`$NOTION_SCENIC_MEETING_DS`) — created with the default
-Scenic pin above, no re-pin needed. The legacy `Meeting Notes` DBs (회의록 / old default)
-live in **DODO-SPACE** and are used **only when the user explicitly routes there** (or
-passes an explicit `database_id`); for those, re-pin `NOTION_WORKSPACE_ID` to
-`$NOTION_WS_DODO` for that run, or every call 404s.
+**The default target for meetings/미팅/everything else is the primary workspace
+`Meeting Notes` DB** (`$NOTION_PRIMARY_MEETING_DS`) — created with the default pin
+above, no re-pin needed. The legacy `Meeting Notes` DBs (회의록 / old default)
+live in the **legacy workspace** and are used **only when the user explicitly routes
+there** (or passes an explicit `database_id`); for those, re-pin
+`NOTION_WORKSPACE_ID` to `$NOTION_WS_LEGACY` for that run, or every call 404s.
 
 ### Routing
 
 - **1on1 (원온원):** title/label contains `1on1`, `1:1`, `원온원`, or `one on one`
-  (case-insensitive). **This is the default for 1on1s and lives in Scenic.**
-  - Workspace: **Scenic** (`$NOTION_WS_SCENIC`)
+  (case-insensitive). **This is the default for 1on1s and lives in the primary workspace.**
+  - Workspace: **primary** (`$NOTION_WS_PRIMARY`)
   - Private DB `1on1 Notes`, under the 🔒 `1on1` top-level page
     (page id `$NOTION_1ON1_PARENT_PAGE`)
   - Database id `$NOTION_1ON1_DB`
@@ -141,14 +142,14 @@ passes an explicit `database_id`); for those, re-pin `NOTION_WORKSPACE_ID` to
   - Schema: `이름` (title), `Date` (date), `상대` (select — partner name options;
     add new options as needed). Set `상대` to the 1on1 partner. Use diarize mode.
 - **Default / everything else (회의/미팅 and anything not matched above):** use the
-  **Scenic `Meeting Notes` DB** (the default since 2026-06-14, in Scenic).
-  - Workspace: **Scenic** (`$NOTION_WS_SCENIC`) — already pinned by default, no re-pin.
-  - **Data source (create pages here): `$NOTION_SCENIC_MEETING_DS`**
-  - Database id `$NOTION_SCENIC_MEETING_DB`
+  **primary workspace `Meeting Notes` DB**.
+  - Workspace: **primary** (`$NOTION_WS_PRIMARY`) — already pinned by default, no re-pin.
+  - **Data source (create pages here): `$NOTION_PRIMARY_MEETING_DS`**
+  - Database id `$NOTION_PRIMARY_MEETING_DB`
   - Schema: `Meeting name` (title), `Date`, `Attendees` (people), `Category` (multi_select).
-- **Legacy 회의록 / default (DODO-SPACE) — only on explicit request:** use **only** when
-  the user explicitly asks to route to the old DODO-SPACE DBs. Re-pin
-  `NOTION_WORKSPACE_ID=$NOTION_WS_DODO` for that run.
+- **Legacy 회의록 / default (legacy workspace) — only on explicit request:** use **only** when
+  the user explicitly asks to route to the legacy workspace DBs. Re-pin
+  `NOTION_WORKSPACE_ID=$NOTION_WS_LEGACY` for that run.
   - 회의록: `$NOTION_MEETING_DS` (db `$NOTION_MEETING_DB`)
   - old default: `$NOTION_DEFAULT_DS` (db `$NOTION_DEFAULT_DB`)
 
@@ -158,8 +159,8 @@ passes an explicit `database_id` option, that always wins over the routing rule.
 **Public vs private — ALWAYS ASK before creating (user instruction, 2026-06-14).**
 After routing but before building the page, ask the user whether the page should be
 **퍼블릭 (team-shared)** or **프라이빗 (only me)**:
-- **퍼블릭 (team-shared):** create in the routed Scenic `Meeting Notes` DB
-  (`$NOTION_SCENIC_MEETING_DS`) — visible to the team. This is the normal meeting path.
+- **퍼블릭 (team-shared):** create in the routed primary workspace `Meeting Notes` DB
+  (`$NOTION_PRIMARY_MEETING_DS`) — visible to the team. This is the normal meeting path.
 - **프라이빗 (only me):** do **not** use the shared DB. Ask the user for the private
   parent (a 🔒 page only they can see) and create the page under it
   (`parent: { "page_id": <private_page_id> }`), or offer to create a new private page
@@ -205,19 +206,19 @@ Run these once at the top of the workflow and bail out with a clear message if a
    the env var. If `ntn doctor` shows the token is invalid, prompt the user to
    `ntn login` (it requires opening a browser). (The `Workers enabled` /
    `list workers` warnings are irrelevant — this skill only uses the Pages API.)
-4.5. **Pin the workspace to Scenic (default)** (see "Workspace (pinned)" above):
-   `export NOTION_WORKSPACE_ID=$NOTION_WS_SCENIC`. Do this
+4.5. **Pin the workspace to the primary workspace (default)** (see "Workspace (pinned)" above):
+   `export NOTION_WORKSPACE_ID=$NOTION_WS_PRIMARY`. Do this
    before any `ntn api` call and keep it exported for every page-create/PATCH in
-   this run. Confirm with `ntn api v1/users/me` → `workspace_name` = `Scenic`.
-   Meetings/미팅 now create in the **Scenic** `Meeting Notes` DB by default — no re-pin.
-   Re-pin to DODO-SPACE (`$NOTION_WS_DODO`) only when the user **explicitly** routes to
-   the legacy DODO 회의록 / default DBs, or passes an explicit `database_id` there.
+   this run. Confirm with `ntn api v1/users/me` → `workspace_name` matches your primary workspace.
+   Meetings/미팅 now create in the **primary** `Meeting Notes` DB by default — no re-pin.
+   Re-pin to the legacy workspace (`$NOTION_WS_LEGACY`) only when the user **explicitly** routes to
+   the legacy 회의록 / default DBs, or passes an explicit `database_id` there.
 5. `command -v python3` resolves and `python3 -c 'import elevenlabs'` succeeds. If not, run `python3 -m pip install --user elevenlabs` (or `uv pip install elevenlabs`). On macOS, the system `python3` is Apple's Xcode build — `--user` install is the safe fallback.
 6. `command -v ffprobe` resolves (used for duration → cost estimate; the audio itself goes straight to Scribe v2 without re-encoding). On macOS: `brew install ffmpeg`.
 7. **Confirm language with the user.** Always ask: *"녹음 언어가 한국어 맞나요? (다른 언어면 알려주세요)"* — even when title looks Korean. The wrong language hint produces broken transcripts; assuming silently has burned us before. Default suggestion is `kor`. Set `LANG_HINT` accordingly.
 8. **Confirm transcription mode with the user** if title doesn't clearly indicate it (see "Transcription mode routing"). Surface picked mode + DB target before billing.
-8.5. **Ask public vs private before creating the page** (user instruction, 2026-06-14; see "Public vs private" under Routing). Default suggestion: 퍼블릭(team-shared) → Scenic `Meeting Notes` DB. If 프라이빗, get/create the private parent page and create under it instead. Skip for 1on1 routing (already private). Surface the picked visibility + DB target alongside the mode.
-9. **For diarize mode: ask the user for the participant list before transcribing.** This is critical — pass the names as `keyterms` to Scribe v2 (most effective bias against name mishears) AND use them for `speaker_X → 실명` mapping in the merge step. Always pre-include **도현 (the user's name, per `user_name.md` memory)** as a default participant; prompt the user only for the *other* participants. Phrase: *"이 회의에 도현 외에 누가 참여하셨나요? (이름을 콤마로 구분해 알려주세요)"*. Empirically: skipping this step or relying on title-derived keyterms alone has produced repeated wrong mappings — Scribe drifts 도현 → 지훈/지은, 지운 → 두윤, 규희 → 규인 even with partial keyterms. Confirming up front saves an entire archive+rebuild cycle. Add any company/brand names mentioned in the title (e.g. 마리트, 앤트, D&C) to keyterms as well. Skip this step for plain transcribe mode (lectures don't need speaker mapping).
+8.5. **Ask public vs private before creating the page** (see "Public vs private" under Routing). Default suggestion: 퍼블릭(team-shared) → primary workspace `Meeting Notes` DB. If 프라이빗, get/create the private parent page and create under it instead. Skip for 1on1 routing (already private). Surface the picked visibility + DB target alongside the mode.
+9. **For diarize mode: ask the user for the participant list before transcribing.** This is critical — pass the names as `keyterms` to Scribe v2 (most effective bias against name mishears) AND use them for `speaker_X → 실명` mapping in the merge step. Always pre-include **the user's own name** as a default participant; prompt the user only for the *other* participants. Phrase: *"이 회의에 본인 외에 누가 참여하셨나요? (이름을 콤마로 구분해 알려주세요)"*. Empirically: skipping this step or relying on title-derived keyterms alone has produced repeated wrong mappings — Scribe drifts Korean names into similar-sounding alternatives even with partial keyterms. Confirming up front saves an entire archive+rebuild cycle. Add any company/brand names mentioned in the title to keyterms as well. Skip this step for plain transcribe mode (lectures don't need speaker mapping).
 10. **Cost preview — show estimated cost to the user and get explicit confirmation before transcribing.** See "Cost estimation" below.
 
 ## Cost estimation
@@ -277,7 +278,7 @@ One call handles the whole file (≤ 3 GB / 10 hr). Toggle `diarize` based on `$
 
 ```bash
 # $KEYTERMS_JSON is an optional JSON array of strings (≤100), e.g.
-#   export KEYTERMS_JSON='["마이리얼트립","SUDO","Q4 OKR"]'
+#   export KEYTERMS_JSON='["CompanyName","ProjectX","Q4 OKR"]'
 DIARIZE=$([ "$MODE" = "diarize" ] && echo true || echo false)
 
 python3 - <<'PY' "$AUDIO_FILE" "$LANG_HINT" "$DIARIZE" "$OUT_DIR" "${KEYTERMS_JSON:-[]}"
@@ -403,14 +404,14 @@ produce the meeting-minutes format described after.
 #### 4a. Lecture write-up format (plain mode)
 
 Reference exemplar: `notion.so/3252cfba780a80b0be54d4babf328593`
-(호갱노노_강연정리, 197 blocks across 10 numbered sections). Match that depth.
+(a real lecture write-up, 197 blocks across 10 numbered sections). Match that depth.
 
 A good 강연정리 preserves the speaker's voice and the concrete details — names,
 numbers, dates, specific anecdotes — not just the abstract takeaways. A reader
 who didn't attend should be able to quote it confidently. Required structure
 in this order:
 
-- **`heading_1`** — talk title (e.g. "마이리얼트립 창업 스토리 - 이동건 대표 강연 정리")
+- **`heading_1`** — talk title (e.g. "OO 창업 스토리 - 대표 강연 정리")
 - **`quote`** — one-sentence subtitle: who spoke, where, and any constraint
   (e.g. "대전제: SNS에 공개하지 않기로 약속함")
 - **`callout`** (💡 yellow_background) — the single most quotable insight
@@ -495,7 +496,7 @@ structure as Notion blocks here).
 - **`heading_3`** "Speakers" + `bulleted_list_item` × N — list each
   `speaker_X` with a one-line description of who they appear to be. **When the
   user supplied a participant list (Preflight #9), map to the real name** —
-  e.g. "speaker_0 — 박도현(도현): 창업자, 제품 피칭", "speaker_1 — 영무: 투자 심사역".
+  e.g. "speaker_0 — 홍길동: 창업자, 제품 피칭", "speaker_1 — 김철수: 투자 심사역".
 - **`heading_3`** "전사 품질 메모" + caveat paragraph — ASR confidence,
   proper-noun mishears (and their likely correct form), keyterms passed, and the
   source of the speaker→name mapping (user-confirmed vs inferred).
@@ -522,7 +523,7 @@ Match the summary language to the audio language. Korean audio → Korean minute
 Schema is known — no discovery needed. Defaults:
 
 - `parent`: picked by the Routing rule above. **Default (퍼블릭 meeting):**
-  `{ "data_source_id": "$NOTION_SCENIC_MEETING_DS" }` (Scenic Meeting Notes).
+  `{ "data_source_id": "$NOTION_PRIMARY_MEETING_DS" }` (primary workspace Meeting Notes).
   **프라이빗:** `{ "page_id": "<private_parent_page_id>" }` instead.
   **Legacy DODO (explicit only):** `$NOTION_MEETING_DS` / `$NOTION_DEFAULT_DS`.
   Override with the `database_id` option when supplied.
@@ -680,35 +681,33 @@ If the actual cost differs from the estimate by > 20 %, call it out — usually 
 
 ## Lessons learned (empirical, fold into changes)
 
-- **Scribe v2 is the only transcription path now.** Earlier versions of this skill supported OpenAI's `gpt-4o-transcribe(-diarize)`. We removed it after a head-to-head on a 15-min Korean lecture (`마이리얼트립`): same price point (~$0.09 vs $0.10), but OpenAI dropped content, fragmented utterances heavily, emitted `###` segment markers, and — worst — bled the biasing prompt straight into the output. Scribe v2 produced clean flowing text, caught audio events (`[사람들 웅성거리는 소리]`), and rendered numerals the way the speaker actually said them.
+- **Scribe v2 is the only transcription path now.** Earlier versions of this skill supported OpenAI's `gpt-4o-transcribe(-diarize)`. We removed it after a head-to-head on a 15-min Korean lecture: same price point (~$0.09 vs $0.10), but OpenAI dropped content, fragmented utterances heavily, emitted `###` segment markers, and — worst — bled the biasing prompt straight into the output. Scribe v2 produced clean flowing text, caught audio events (`[사람들 웅성거리는 소리]`), and rendered numerals the way the speaker actually said them.
 - **Always confirm language with the user before transcribing.** Even if title looks Korean, ask once. Wrong language hint silently produces broken transcripts. Default suggestion: `kor`.
 - **Always show cost preview *and* request confirmation before billing.** Even at ~$0.40/hr Scribe v2 it's real money on longer files. The post-run "actual cost" line is a deterministic recompute from duration × rate — the API doesn't return a billed amount in-band, so the dashboard remains source-of-truth for invoices.
 - **`with_raw_response` doesn't exist on `client.speech_to_text.convert` in elevenlabs SDK 2.47.0.** The openai-py pattern (`client.foo.with_raw_response.bar(...)`) does not transfer. Call `.convert()` directly. If you need request-level accounting, look up by timestamp in the dashboard.
-- **Always construct the client as `ElevenLabs(timeout=1200)`.** The SDK defaults to httpx's short read timeout (~60 s). Scribe v2 takes ~4–5 min server-side for a 60-min Korean lecture, so the default raises `httpx.ReadTimeout` long before the result is ready. 1200 s (20 min) covers anything up to the 10-hr cap with margin. Burned on the first 마이리얼트립 강연 run; fix is one keyword arg.
+- **Always construct the client as `ElevenLabs(timeout=1200)`.** The SDK defaults to httpx's short read timeout (~60 s). Scribe v2 takes ~4–5 min server-side for a 60-min Korean lecture, so the default raises `httpx.ReadTimeout` long before the result is ready. 1200 s (20 min) covers anything up to the 10-hr cap with margin.
 - **Notion page archival uses `in_trash: true`, not `archived: true`** in the 2025+ API. Sending `archived` returns `400 body failed validation: body.archived should be not present`. The response field is also `in_trash`; `archived` reads as `None`. Same behavior — archiving a parent also makes children inaccessible — so recreate sub-pages after archiving a main page.
 - **Notion's 100-block-per-request cap applies to `POST /v1/pages` too**, not just to `PATCH /v1/blocks/<id>/children`. The lecture 강연정리 format runs 150–300 blocks for an hour-long talk; chunk into ≤100-block groups, POST the first with metadata, PATCH the rest in order. PATCH preserves insertion order so the page reads top-to-bottom as the chunked list does.
 - **For long transcripts, don't try to `Read` the .txt or merged.json in one shot.** Tokens exceed the 25k Read cap. Either split into ~10k-char `part_NN.txt` files via a Python helper and read each in parallel, or use `Read` with explicit `offset`/`limit`.
-- **The lecture 강연정리 format is a hard-deliverable, not a stretch goal.** Paraphrased-bullets summaries fall flat compared to the reference (호갱노노_강연정리, 3252cfba…). Hit ~10 numbered sections with TOC + verbatim `quote` blocks + preserved names/numbers — see Step 4a.
-- **The 4b meeting format is thematic Q&A, not a flat bullet list.** Adopted from the bundled `meeting-minutes` reference skill (see `references/meeting-minutes-example.md`). Cluster the call into 4–8 topic sections ordered by logic (not chronology), rewrite each exchange into a synthesized `Q.`→`A.` pair, and bold the facts. Real run: the 카카오벤처스 Scenic 프리시드 미팅 (35 min, 2 speakers) produced a clean 13-pair "💬 주제별 논의 (Q&A)" section that the user specifically asked for after the first flat summary — bake it in from the start. Insert the Q&A section between "Open questions" and "✅ Action Plan"; if added to an existing page, use positional `after` with `--notion-version 2022-06-28`.
-- **Use the participant list to map `speaker_X → 실명` and surface the mapping for confirmation when ambiguous.** When two speakers both use "저희"/role-neutral language (founder + investor in a pitch meeting), the role isn't decidable from text alone — ask the user which voice did what (e.g. "who pitched vs who asked the evaluation questions?") before rendering. Confirmed once, render real names everywhere (summary, Speakers, raw transcript). Scenic run: speaker_0 was confirmed as 박도현, speaker_1 as 영무 this way.
-- **Fix obvious product/brand mishears in the summary, but leave the raw transcript faithful.** Scribe rendered the product name "Scenic" as "SEMY/세미" throughout. Use the correct name in the minutes and add a "⚠ 'Scenic' ↔ 'SEMY/세미' mishear" note in 전사 품질 메모; keep the sub-page transcript as Scribe produced it (offer a find-replace only if the user asks).
-- **For diarize mode, ask for the participant list before transcribing.** Empirical pattern: across two consecutive meeting runs we had to archive+rebuild the Notion page after the user corrected the speaker names. Title-derived keyterms alone don't lock the ASR — Scribe drifts 도현 → 지훈/지은, 지운 → 두윤, 규희 → 규인 even with partial keyterms. Asking up front (with 도현 pre-included) gives both the keyterms and the `speaker_X → 실명` mapping for the merge step. See Preflight #9.
+- **The lecture 강연정리 format is a hard-deliverable, not a stretch goal.** Paraphrased-bullets summaries fall flat compared to a rich write-up. Hit ~10 numbered sections with TOC + verbatim `quote` blocks + preserved names/numbers — see Step 4a.
+- **The 4b meeting format is thematic Q&A, not a flat bullet list.** Adopted from the bundled `meeting-minutes` reference skill (see `references/meeting-minutes-example.md`). Cluster the call into 4–8 topic sections ordered by logic (not chronology), rewrite each exchange into a synthesized `Q.`→`A.` pair, and bold the facts. A real 35-min 2-speaker meeting produced a clean 13-pair "💬 주제별 논의 (Q&A)" section — bake it in from the start. Insert the Q&A section between "Open questions" and "✅ Action Plan"; if added to an existing page, use positional `after` with `--notion-version 2022-06-28`.
+- **Use the participant list to map `speaker_X → 실명` and surface the mapping for confirmation when ambiguous.** When two speakers both use "저희"/role-neutral language (founder + investor in a pitch meeting), the role isn't decidable from text alone — ask the user which voice did what (e.g. "who pitched vs who asked the evaluation questions?") before rendering. Confirmed once, render real names everywhere (summary, Speakers, raw transcript).
+- **Fix obvious product/brand mishears in the summary, but leave the raw transcript faithful.** Scribe sometimes renders product names as similar-sounding words. Use the correct name in the minutes and add a mishear note in 전사 품질 메모; keep the sub-page transcript as Scribe produced it (offer a find-replace only if the user asks).
+- **For diarize mode, ask for the participant list before transcribing.** Empirical pattern: across consecutive meeting runs we had to archive+rebuild the Notion page after the user corrected the speaker names. Title-derived keyterms alone don't lock the ASR — Scribe drifts Korean names into similar-sounding alternatives even with partial keyterms. Asking up front (with the user's name pre-included) gives both the keyterms and the `speaker_X → 실명` mapping for the merge step. See Preflight #9.
 - **Scribe v2 occasionally splits one speaker into two labels** during brief audio-quality changes (mic distance, seating shift). Symptom: a label appears only during a short window (e.g. 18:35~24:23, 6% of total) with content that flows naturally from another label's adjacent turns. Recognize and merge before rendering — don't create a phantom 4th participant. The participant list from Preflight #9 makes this much easier to catch.
-- **`keyterms` >> `prompt`.** Up to 100 names/terms can be passed and they actually bias the recognizer toward those tokens. Always pass at least the topic/company name when you can infer it from the title (e.g. `keyterms=["마이리얼트립"]` for a `마이리얼트립 강연` recording).
+- **`keyterms` >> `prompt`.** Up to 100 names/terms can be passed and they actually bias the recognizer toward those tokens. Always pass at least the topic/company name when you can infer it from the title (e.g. `keyterms=["CompanyName"]` for a `CompanyName 강연` recording).
 - **Mac-stock python3 lacks `elevenlabs`:** install with `python3 -m pip install --user elevenlabs`. The `--user` script dir (`~/Library/Python/3.9/bin`) isn't on PATH but that doesn't matter — we invoke via `python3 -c`/heredoc.
 - **Notion 2025+ DBs use data sources:** the Pages API requires `parent.data_source_id`, not `parent.database_id`, when the DB has a `data_sources[]` array. The legacy form silently fails or routes to the wrong place. The skill's hard-coded data source ID handles this.
 - **Notion CLI accepts stored login (`ntn login`) without `NOTION_API_TOKEN`:** the env var is only needed to override. Don't gate on its presence.
 - **`ntn api` reads the body from stdin, not `-d @file`:** pass JSON via `cat payload.json | ntn api v1/pages -X POST`. The `-d` flag only accepts an inline JSON string.
 - **Inserting blocks mid-page (`after` field) requires the 2022-06-28 Notion version:** the current default rejects `after` on `PATCH v1/blocks/<id>/children`. Use `--notion-version 2022-06-28` when you need positional insertion (e.g. adding an Action Plan into an existing page).
 - **Voice Memos titles live in `ZENCRYPTEDTITLE`, not `ZCUSTOMLABEL`:** despite the name, the value reads as plaintext through SQLite. `ZCUSTOMLABEL` is usually a default ISO timestamp.
-- **Default is now Scenic, not DODO-SPACE (changed 2026-06-14).** Meetings/미팅/everything
-  else create in the **Scenic `Meeting Notes` DB** (`$NOTION_SCENIC_MEETING_DS`, db
-  `$NOTION_SCENIC_MEETING_DB`) under the default Scenic pin — no re-pin. On the Aow 작가님
-  미팅 run the page was first (wrongly) created in DODO-SPACE; the user asked to make Scenic
-  the standing default and to **always ask 퍼블릭(team-shared) vs 프라이빗(only-me)** before
-  creating. The legacy DODO 회의록/default DBs (`$NOTION_MEETING_DS` / `$NOTION_DEFAULT_DS`)
-  are now used **only on explicit request** — and only then re-pin
-  `NOTION_WORKSPACE_ID=$NOTION_WS_DODO` for that run.
+- **Default is now the primary workspace, not the legacy workspace.** Meetings/미팅/everything
+  else create in the **primary workspace `Meeting Notes` DB** (`$NOTION_PRIMARY_MEETING_DS`, db
+  `$NOTION_PRIMARY_MEETING_DB`) under the default pin — no re-pin. Always **ask
+  퍼블릭(team-shared) vs 프라이빗(only-me)** before creating. The legacy 회의록/default DBs
+  (`$NOTION_MEETING_DS` / `$NOTION_DEFAULT_DS`) are now used **only on explicit request** —
+  and only then re-pin `NOTION_WORKSPACE_ID=$NOTION_WS_LEGACY` for that run.
 - **The `ntn` default workspace is not stable — always pin explicitly.** `ntn` persists the
   last-used `NOTION_WORKSPACE_ID` into `~/.config/notion/config.json` →
   `defaultWorkspaceIds.prod`, so a prior run can drift the default and make every `ntn api`
@@ -718,8 +717,8 @@ If the actual cost differs from the estimate by > 20 %, call it out — usually 
 - **Moving a page between workspaces = recreate + trash, not edit.** A page can't be reparented
   across workspaces via the API. To move it: rebuild the payloads pointing at the new
   data_source/parent, POST the new page (+sub-page batches), then archive the old one with
-  `{"in_trash": true}` (not `archived`). On the Aow run this moved the note DODO→Scenic cleanly.
+  `{"in_trash": true}` (not `archived`).
 - **Avoid heredocs inside the skill's bash steps when the harness may auto-background the call.**
   A backgrounded `bash` with inline `<<'PY'` heredocs silently stalled mid-script (only the first
-  line printed) on the Aow run. Prefer a written `.sh` file run with `bash file.sh`, or `python3 -c`
+  line printed). Prefer a written `.sh` file run with `bash file.sh`, or `python3 -c`
   one-liners, and write results/IDs to a file you can read back.
