@@ -105,30 +105,31 @@ This defines `$NOTION_WS_PRIMARY`, `$NOTION_WS_LEGACY`, `$NOTION_USER`, `$NOTION
 (the last four are legacy workspace DBs). If any are unset, the `.env` is missing —
 tell the user to `cp .env.example .env` and fill it in.
 
-### Workspace (pinned)
+### Workspace (ALWAYS ASK — user instruction, 2026-06-20)
 
-**Default workspace is the primary workspace** (`$NOTION_WS_PRIMARY`). The `ntn` CLI's
-default workspace is **not stable** — it gets overwritten to whatever workspace
-`NOTION_WORKSPACE_ID` last targeted, so every `ntn api` call 404s with
-`Could not find data_source` if the pin drifts. **Always pin the workspace for this
-skill** by exporting it once at the top of the run, before any `ntn` call:
+**Always ask the user which workspace to target before creating a page.** Never
+silently default to one workspace. The `ntn` CLI's default workspace is **not
+stable** — it gets overwritten to whatever workspace `NOTION_WORKSPACE_ID` last
+targeted, so every `ntn api` call 404s with `Could not find data_source` if the
+pin drifts.
+
+Ask: *"어느 워크스페이스에 올릴까요?"* and present the known options:
+- **Scenic** (primary, `$NOTION_WS_PRIMARY`) — team workspace
+- **DODO-SPACE** (legacy, `$NOTION_WS_LEGACY`) — personal workspace
+
+If the user provides a Notion URL or explicit `database_id`, infer the workspace
+from the response (try primary first; if 404, try legacy). Pin accordingly.
+
+Once the user picks, export the workspace for the whole run:
 
 ```bash
-export NOTION_WORKSPACE_ID=$NOTION_WS_PRIMARY
+export NOTION_WORKSPACE_ID=<chosen workspace id>
 ```
 
-This env var overrides the config default for the whole session. Verify with
-`ntn api v1/users/me` → `bot.workspace_name` should match your primary workspace.
-If the workspace isn't in `~/.config/notion/workspaces.json`, the user must
-`ntn login` to it first.
+Verify with `ntn api v1/users/me` → `bot.workspace_name` should match the
+chosen workspace. If the workspace isn't in
+`~/.config/notion/workspaces.json`, the user must `ntn login` to it first.
 (Stored workspace ids: primary = `$NOTION_WS_PRIMARY`, legacy = `$NOTION_WS_LEGACY`.)
-
-**The default target for meetings/미팅/everything else is the primary workspace
-`Meeting Notes` DB** (`$NOTION_PRIMARY_MEETING_DS`) — created with the default pin
-above, no re-pin needed. The legacy `Meeting Notes` DBs (회의록 / old default)
-live in the **legacy workspace** and are used **only when the user explicitly routes
-there** (or passes an explicit `database_id`); for those, re-pin
-`NOTION_WORKSPACE_ID` to `$NOTION_WS_LEGACY` for that run, or every call 404s.
 
 ### Routing
 
@@ -142,30 +143,24 @@ there** (or passes an explicit `database_id`); for those, re-pin
   - Schema: `이름` (title), `Date` (date), `상대` (select — partner name options;
     add new options as needed). Set `상대` to the 1on1 partner. Use diarize mode.
 - **Default / everything else (회의/미팅 and anything not matched above):** use the
-  **primary workspace `Meeting Notes` DB**.
-  - Workspace: **primary** (`$NOTION_WS_PRIMARY`) — already pinned by default, no re-pin.
-  - **Data source (create pages here): `$NOTION_PRIMARY_MEETING_DS`**
-  - Database id `$NOTION_PRIMARY_MEETING_DB`
+  `Meeting Notes` DB **in the workspace the user selected** (see "Workspace" above).
+  - **Scenic (primary):** data source `$NOTION_PRIMARY_MEETING_DS`, db `$NOTION_PRIMARY_MEETING_DB`
+  - **DODO-SPACE (legacy):** query the user-provided URL/DB, or use `$NOTION_MEETING_DS` (db `$NOTION_MEETING_DB`) / `$NOTION_DEFAULT_DS` (db `$NOTION_DEFAULT_DB`)
   - Schema: `Meeting name` (title), `Date`, `Attendees` (people), `Category` (multi_select).
-- **Legacy 회의록 / default (legacy workspace) — only on explicit request:** use **only** when
-  the user explicitly asks to route to the legacy workspace DBs. Re-pin
-  `NOTION_WORKSPACE_ID=$NOTION_WS_LEGACY` for that run.
-  - 회의록: `$NOTION_MEETING_DS` (db `$NOTION_MEETING_DB`)
-  - old default: `$NOTION_DEFAULT_DS` (db `$NOTION_DEFAULT_DB`)
 
 Surface the chosen target to the user before creating the page. If the user
 passes an explicit `database_id` option, that always wins over the routing rule.
 
 **Public vs private — ALWAYS ASK before creating (user instruction, 2026-06-14).**
-After routing but before building the page, ask the user whether the page should be
-**퍼블릭 (team-shared)** or **프라이빗 (only me)**:
-- **퍼블릭 (team-shared):** create in the routed primary workspace `Meeting Notes` DB
-  (`$NOTION_PRIMARY_MEETING_DS`) — visible to the team. This is the normal meeting path.
+After workspace selection and routing, but before building the page, ask the user
+whether the page should be **퍼블릭 (team-shared)** or **프라이빗 (only me)**:
+- **퍼블릭 (team-shared):** create in the routed `Meeting Notes` DB in the chosen
+  workspace — visible to the team.
 - **프라이빗 (only me):** do **not** use the shared DB. Ask the user for the private
   parent (a 🔒 page only they can see) and create the page under it
   (`parent: { "page_id": <private_page_id> }`), or offer to create a new private page
   first. (1on1s already route to the private `1on1 Notes` DB and don't need this prompt.)
-Surface the picked visibility + DB target together with the mode before billing.
+Surface the picked workspace + visibility + DB target together with the mode before billing.
 
 ### Transcription mode routing
 
@@ -206,20 +201,19 @@ Run these once at the top of the workflow and bail out with a clear message if a
    the env var. If `ntn doctor` shows the token is invalid, prompt the user to
    `ntn login` (it requires opening a browser). (The `Workers enabled` /
    `list workers` warnings are irrelevant — this skill only uses the Pages API.)
-4.5. **Pin the workspace to the primary workspace (default)** (see "Workspace (pinned)" above):
-   `export NOTION_WORKSPACE_ID=$NOTION_WS_PRIMARY`. Do this
-   before any `ntn api` call and keep it exported for every page-create/PATCH in
-   this run. Confirm with `ntn api v1/users/me` → `workspace_name` matches your primary workspace.
-   Meetings/미팅 now create in the **primary** `Meeting Notes` DB by default — no re-pin.
-   Re-pin to the legacy workspace (`$NOTION_WS_LEGACY`) only when the user **explicitly** routes to
-   the legacy 회의록 / default DBs, or passes an explicit `database_id` there.
+4.5. **Ask the user which workspace to target** (see "Workspace" above). Present
+   the known options (Scenic / DODO-SPACE). Pin the chosen workspace:
+   `export NOTION_WORKSPACE_ID=<chosen id>`. Confirm with
+   `ntn api v1/users/me` → `workspace_name` matches the user's choice.
+   If the user provides a Notion URL or explicit `database_id`, infer the
+   workspace from the API response (try primary first; if 404, try legacy).
 5. `command -v python3` resolves and `python3 -c 'import elevenlabs'` succeeds. If not, run `python3 -m pip install --user elevenlabs` (or `uv pip install elevenlabs`). On macOS, the system `python3` is Apple's Xcode build — `--user` install is the safe fallback.
 6. `command -v ffprobe` resolves (used for duration → cost estimate; the audio itself goes straight to Scribe v2 without re-encoding). On macOS: `brew install ffmpeg`.
 7. **Confirm language with the user.** Always ask: *"녹음 언어가 한국어 맞나요? (다른 언어면 알려주세요)"* — even when title looks Korean. The wrong language hint produces broken transcripts; assuming silently has burned us before. Default suggestion is `kor`. Set `LANG_HINT` accordingly.
 8. **Confirm transcription mode with the user** if title doesn't clearly indicate it (see "Transcription mode routing"). Surface picked mode + DB target before billing.
 8.5. **Ask public vs private before creating the page** (see "Public vs private" under Routing). Default suggestion: 퍼블릭(team-shared) → primary workspace `Meeting Notes` DB. If 프라이빗, get/create the private parent page and create under it instead. Skip for 1on1 routing (already private). Surface the picked visibility + DB target alongside the mode.
 9. **For diarize mode: ask the user for the participant list before transcribing.** This is critical — pass the names as `keyterms` to Scribe v2 (most effective bias against name mishears) AND use them for `speaker_X → 실명` mapping in the merge step. Always pre-include **the user's own name** as a default participant; prompt the user only for the *other* participants. Phrase: *"이 회의에 본인 외에 누가 참여하셨나요? (이름을 콤마로 구분해 알려주세요)"*. Empirically: skipping this step or relying on title-derived keyterms alone has produced repeated wrong mappings — Scribe drifts Korean names into similar-sounding alternatives even with partial keyterms. Confirming up front saves an entire archive+rebuild cycle. Add any company/brand names mentioned in the title to keyterms as well. Skip this step for plain transcribe mode (lectures don't need speaker mapping).
-10. **Cost preview — show estimated cost to the user and get explicit confirmation before transcribing.** See "Cost estimation" below.
+10. **Cost preview — compute and log the estimated cost for the post-run report.** Do NOT ask the user for confirmation — proceed automatically. See "Cost estimation" below.
 
 ## Cost estimation
 
@@ -238,29 +232,13 @@ Rate (point-in-time; verify in the [ElevenLabs dashboard](https://elevenlabs.io/
 
 Compute `EST_COST_USD = DUR_MIN × 0.0067`. Render with two decimals.
 
-**Surface to the user before billing:**
-
-```
-🎙  Transcription preview
-    File:     /Users/…/audio.m4a
-    Duration: 64.30 min
-    Model:    scribe_v2 (diarize)
-    Language: kor
-    Estimated cost: ~$0.43 USD
-Proceed? (y/n)
-```
-
-Stash the estimate for the post-run report:
+Stash for the post-run report (no user confirmation needed — proceed automatically):
 
 ```bash
 mkdir -p "$OUT_DIR"
 echo "$EST_COST_USD" > "$OUT_DIR/cost_estimate.txt"
 echo "$DUR_SEC" > "$OUT_DIR/duration_sec.txt"
 ```
-
-If the user declines, abort cleanly — no transcription, no Notion page created.
-
-For **long-and-expensive** previews (≥ $1.00 or audio > 60 min), repeat the cost line in bold and explicitly ask before proceeding. Never start transcription on a > 30 min file without a `y` from the user.
 
 ## Steps
 
@@ -683,7 +661,7 @@ If the actual cost differs from the estimate by > 20 %, call it out — usually 
 
 - **Scribe v2 is the only transcription path now.** Earlier versions of this skill supported OpenAI's `gpt-4o-transcribe(-diarize)`. We removed it after a head-to-head on a 15-min Korean lecture: same price point (~$0.09 vs $0.10), but OpenAI dropped content, fragmented utterances heavily, emitted `###` segment markers, and — worst — bled the biasing prompt straight into the output. Scribe v2 produced clean flowing text, caught audio events (`[사람들 웅성거리는 소리]`), and rendered numerals the way the speaker actually said them.
 - **Always confirm language with the user before transcribing.** Even if title looks Korean, ask once. Wrong language hint silently produces broken transcripts. Default suggestion: `kor`.
-- **Always show cost preview *and* request confirmation before billing.** Even at ~$0.40/hr Scribe v2 it's real money on longer files. The post-run "actual cost" line is a deterministic recompute from duration × rate — the API doesn't return a billed amount in-band, so the dashboard remains source-of-truth for invoices.
+- **Do NOT ask the user for cost confirmation — proceed automatically.** Compute and stash the estimate for the post-run report, but do not gate on a `y/n`. The post-run "actual cost" line is a deterministic recompute from duration × rate — the API doesn't return a billed amount in-band, so the dashboard remains source-of-truth for invoices.
 - **`with_raw_response` doesn't exist on `client.speech_to_text.convert` in elevenlabs SDK 2.47.0.** The openai-py pattern (`client.foo.with_raw_response.bar(...)`) does not transfer. Call `.convert()` directly. If you need request-level accounting, look up by timestamp in the dashboard.
 - **Always construct the client as `ElevenLabs(timeout=1200)`.** The SDK defaults to httpx's short read timeout (~60 s). Scribe v2 takes ~4–5 min server-side for a 60-min Korean lecture, so the default raises `httpx.ReadTimeout` long before the result is ready. 1200 s (20 min) covers anything up to the 10-hr cap with margin.
 - **Notion page archival uses `in_trash: true`, not `archived: true`** in the 2025+ API. Sending `archived` returns `400 body failed validation: body.archived should be not present`. The response field is also `in_trash`; `archived` reads as `None`. Same behavior — archiving a parent also makes children inaccessible — so recreate sub-pages after archiving a main page.
@@ -702,12 +680,10 @@ If the actual cost differs from the estimate by > 20 %, call it out — usually 
 - **`ntn api` reads the body from stdin, not `-d @file`:** pass JSON via `cat payload.json | ntn api v1/pages -X POST`. The `-d` flag only accepts an inline JSON string.
 - **Inserting blocks mid-page (`after` field) requires the 2022-06-28 Notion version:** the current default rejects `after` on `PATCH v1/blocks/<id>/children`. Use `--notion-version 2022-06-28` when you need positional insertion (e.g. adding an Action Plan into an existing page).
 - **Voice Memos titles live in `ZENCRYPTEDTITLE`, not `ZCUSTOMLABEL`:** despite the name, the value reads as plaintext through SQLite. `ZCUSTOMLABEL` is usually a default ISO timestamp.
-- **Default is now the primary workspace, not the legacy workspace.** Meetings/미팅/everything
-  else create in the **primary workspace `Meeting Notes` DB** (`$NOTION_PRIMARY_MEETING_DS`, db
-  `$NOTION_PRIMARY_MEETING_DB`) under the default pin — no re-pin. Always **ask
-  퍼블릭(team-shared) vs 프라이빗(only-me)** before creating. The legacy 회의록/default DBs
-  (`$NOTION_MEETING_DS` / `$NOTION_DEFAULT_DS`) are now used **only on explicit request** —
-  and only then re-pin `NOTION_WORKSPACE_ID=$NOTION_WS_LEGACY` for that run.
+- **Always ask the user which workspace to target — never silently default.** Present
+  Scenic (primary) and DODO-SPACE (legacy) as options. Then ask 퍼블릭 vs 프라이빗 within
+  the chosen workspace. Pin `NOTION_WORKSPACE_ID` to the chosen workspace before any
+  `ntn api` call. If the user provides a Notion URL, infer the workspace from the API.
 - **The `ntn` default workspace is not stable — always pin explicitly.** `ntn` persists the
   last-used `NOTION_WORKSPACE_ID` into `~/.config/notion/config.json` →
   `defaultWorkspaceIds.prod`, so a prior run can drift the default and make every `ntn api`
