@@ -14,7 +14,7 @@ Or install a single skill:
 
 ```bash
 npx skills add callmejustdodo/dodo-skills --skill followup-mail
-npx skills add callmejustdodo/dodo-skills --skill voice-memo-to-notion
+npx skills add callmejustdodo/dodo-skills --skill voice-memo-2-meeting-note
 ```
 
 ## Skills
@@ -22,17 +22,17 @@ npx skills add callmejustdodo/dodo-skills --skill voice-memo-to-notion
 | Skill | What it does |
 |-------|--------------|
 | [`followup-mail`](./followup-mail) | Drafts a Korean meeting follow-up email and saves it as a Gmail draft (never sends). |
-| [`voice-memo-to-notion`](./voice-memo-to-notion) | Transcribes audio (ElevenLabs Scribe v2), summarizes, and creates a Notion page. |
+| [`voice-memo-2-meeting-note`](./voice-memo-2-meeting-note) | Transcribes audio (ElevenLabs Scribe v2), summarizes, and creates a Notion page. |
 
 ## Prerequisites
 
 | Dependency | Required by | Install |
 |------------|-------------|---------|
 | [`gws`](https://github.com/nicholasgasior/gws) | followup-mail | See gws docs |
-| [`ntn`](https://ntn.dev) | voice-memo-to-notion | `curl -fsSL https://ntn.dev \| bash` |
-| `ELEVENLABS_API_KEY` | voice-memo-to-notion | [elevenlabs.io](https://elevenlabs.io) |
-| `ffprobe` | voice-memo-to-notion | `brew install ffmpeg` |
-| `python3` + `elevenlabs` SDK | voice-memo-to-notion | `pip install elevenlabs` |
+| [`ntn`](https://ntn.dev) | voice-memo-2-meeting-note | `curl -fsSL https://ntn.dev \| bash` |
+| `ELEVENLABS_API_KEY` | voice-memo-2-meeting-note | [elevenlabs.io](https://elevenlabs.io) |
+| `ffprobe` | voice-memo-2-meeting-note | `brew install ffmpeg` |
+| `python3` + `elevenlabs` SDK | voice-memo-2-meeting-note | `pip install elevenlabs` |
 
 ## Setup
 
@@ -77,7 +77,7 @@ Trigger by saying things like:
 
 The skill gathers meeting details, drafts a Korean business email, and saves it as a Gmail draft. It **never sends** — you review and send from Gmail.
 
-### voice-memo-to-notion
+### voice-memo-2-meeting-note
 
 Trigger by saying things like:
 - "최근 보이스메모 노션에 올려줘"

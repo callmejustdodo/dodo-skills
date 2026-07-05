@@ -1,11 +1,11 @@
 ---
-name: voice-memo-to-notion
-description: Transcribe an audio file via ElevenLabs Scribe v2 (diarized for meetings, plain for lectures), summarize it, and create a Notion page (summary + raw transcript) under the configured database. Can pull recordings straight from the macOS Apple Voice Memos app (auto-reads the latest/by-date memo from its local library — no manual export needed), or take an explicit audio/video file. Use when the user provides a file or references a voice memo and asks to "send it to Notion", "log this meeting", "transcribe my latest voice memo", "transcribe and save to Notion", or similar audio→Notion pipeline requests.
+name: voice-memo-2-meeting-note
+description: Transcribe an audio file via ElevenLabs Scribe v2 (diarized for meetings, plain for lectures), summarize it, and ALWAYS save summary + raw transcript as markdown notes in the Obsidian vault (50 Meetings). Optionally also publish the same content to Notion when the user opts in. Can pull recordings straight from the macOS Apple Voice Memos app (auto-reads the latest/by-date memo from its local library — no manual export needed), or take an explicit audio/video file. Use when the user provides a file or references a voice memo and asks to "transcribe my latest voice memo", "log this meeting", "옵시디언에 저장해줘", "send it to Notion", or similar audio→notes pipeline requests.
 ---
 
-# Voice Memo → Notion
+# Voice Memo → Obsidian (+ optional Notion)
 
-End-to-end pipeline that turns an audio recording into a Notion page containing both an LLM-generated summary and the full transcript. Transcription is **always ElevenLabs Scribe v2** (`scribe_v2`) — single-request up to 3 GB / 10 hr, native diarization, supports `keyterms` (up to 100) for biasing. The previous OpenAI path was removed after an A/B test on Korean lecture audio: Scribe v2 produced cleaner output, captured audio events, and didn't suffer the prompt-bleed bug that polluted `gpt-4o-transcribe` runs.
+End-to-end pipeline that turns an audio recording into an **Obsidian note (summary + raw transcript — always saved)** and, only when the user opts in, a Notion page mirroring the same content. Transcription is **always ElevenLabs Scribe v2** (`scribe_v2`) — single-request up to 3 GB / 10 hr, native diarization, supports `keyterms` (up to 100) for biasing. The previous OpenAI path was removed after an A/B test on Korean lecture audio: Scribe v2 produced cleaner output, captured audio events, and didn't suffer the prompt-bleed bug that polluted `gpt-4o-transcribe` runs.
 
 Two transcription modes are supported and auto-routed by content type:
 
@@ -83,10 +83,54 @@ The full audio path is then `$VM_DIR/$ZPATH`.
 - `mode` (optional): `diarize` or `transcribe`. Auto-detected from title (see "Transcription mode routing" below); explicit value always wins.
 - `keyterms` (optional): list of up to 100 names/terms to bias the recognizer toward (company names, product names, speaker names, technical jargon, acronyms). Strongly recommended when the audio mentions proper nouns ASR is likely to mangle.
 
-## Target database
+## Obsidian output (PRIMARY — always)
 
-Two `Meeting Notes` databases exist; pick by content type. Both share the same
-schema below.
+The Obsidian vault is the primary destination. **Every run writes here,
+regardless of whether Notion upload happens.**
+
+- Vault: `/Users/dohyeonpark/Library/Mobile Documents/iCloud~md~obsidian/Documents/DodoVault`
+  (folder structure & conventions: the vault's own `CLAUDE.md`)
+- Folder: `50 Meetings/` (meetings AND lectures both go here)
+- Two files per run, wiki-linked:
+  - `50 Meetings/YYYY-MM-DD <제목>.md` — summary note (Step 4a/4b content in markdown)
+  - `50 Meetings/YYYY-MM-DD <제목> (전사).md` — raw transcript
+  - Date = the **recording date** (Voice Memos `ZDATE`, or file mtime), not today.
+  - Filenames must be unique vault-wide — wiki links resolve by filename.
+
+Summary note frontmatter:
+
+```yaml
+---
+date: YYYY-MM-DD          # recording date
+type: meeting | lecture
+mode: diarize | transcribe
+participants: [도현, ...]  # diarize mode only
+source: <audio filename>
+duration_min: NN.N
+cost_usd: 0.NNN
+notion: <page URL>         # add only after an opt-in Notion upload succeeds
+---
+```
+
+Markdown mapping from the Step 4 formats (author the content in markdown FIRST;
+Notion blocks are converted from this only when the user opted in — content
+must match 1:1):
+
+- Notion `callout` TL;DR → `> [!tip] TL;DR` Obsidian callout
+- `quote` blocks → `>` blockquotes
+- `to_do` (Action Plan) → `- [ ]` checkboxes
+- `heading_1/2/3`, bullets, numbered lists, **bold** → plain markdown 1:1
+- End the summary note with: `→ 원문 전사: [[YYYY-MM-DD <제목> (전사)]]`
+
+Transcript note body renders exactly like the Notion sub-page: one paragraph
+per speaker turn (`[MM:SS] 이름: …`) in diarize mode; plain paragraphs in
+transcribe mode. Start it with a backlink to the summary note.
+
+## Target database (Notion — opt-in only)
+
+**Skip this entire section unless the user opted into Notion upload
+(Preflight #2.5).** Two `Meeting Notes` databases exist; pick by content type.
+Both share the same schema below.
 
 ### Config (.env)
 
@@ -94,7 +138,7 @@ All workspace / database / data-source IDs live in the repo `.env`, not inline h
 Load them once at the top of the run, before any `ntn` call:
 
 ```bash
-SKILLS_REPO="$(dirname "$(readlink ~/.claude/skills/voice-memo-to-notion)")"
+SKILLS_REPO="$(dirname "$(readlink ~/.claude/skills/voice-memo-2-meeting-note)")"
 set -a; source "$SKILLS_REPO/.env"; set +a
 ```
 
@@ -195,13 +239,18 @@ Run these once at the top of the workflow and bail out with a clear message if a
 
 1. `[ -f "$AUDIO_FILE" ]` — file exists and is readable.
 2. `ELEVENLABS_API_KEY` is set. If not, instruct the user to `export ELEVENLABS_API_KEY=...` in their shell (or run `/setup-api-key`). Never ask them to paste it in chat.
-3. `command -v ntn` resolves. If missing, install with `curl -fsSL https://ntn.dev | bash` (ask first).
-4. Notion auth works: `ntn doctor` reports `Token valid ✔`. The CLI accepts
+2.5. **Ask whether to ALSO upload to Notion.** Obsidian save always happens and
+   needs no confirmation. Ask once: *"옵시디언(50 Meetings)에는 자동 저장돼요.
+   노션에도 올릴까요?"* If the user already said so in the request (e.g. "노션에도
+   올려줘" → yes; "옵시디언에만" → no), don't re-ask. **If no → skip Preflight
+   #3, #4, #4.5, #8.5 and Steps 5–6 entirely.**
+3. *(Notion opt-in only)* `command -v ntn` resolves. If missing, install with `curl -fsSL https://ntn.dev | bash` (ask first).
+4. *(Notion opt-in only)* Notion auth works: `ntn doctor` reports `Token valid ✔`. The CLI accepts
    either `NOTION_API_TOKEN` *or* a stored `ntn login` session — don't require
    the env var. If `ntn doctor` shows the token is invalid, prompt the user to
    `ntn login` (it requires opening a browser). (The `Workers enabled` /
    `list workers` warnings are irrelevant — this skill only uses the Pages API.)
-4.5. **Ask the user which workspace to target** (see "Workspace" above). Present
+4.5. *(Notion opt-in only)* **Ask the user which workspace to target** (see "Workspace" above). Present
    the known options (Scenic / DODO-SPACE). Pin the chosen workspace:
    `export NOTION_WORKSPACE_ID=<chosen id>`. Confirm with
    `ntn api v1/users/me` → `workspace_name` matches the user's choice.
@@ -211,7 +260,7 @@ Run these once at the top of the workflow and bail out with a clear message if a
 6. `command -v ffprobe` resolves (used for duration → cost estimate; the audio itself goes straight to Scribe v2 without re-encoding). On macOS: `brew install ffmpeg`.
 7. **Confirm language with the user.** Always ask: *"녹음 언어가 한국어 맞나요? (다른 언어면 알려주세요)"* — even when title looks Korean. The wrong language hint produces broken transcripts; assuming silently has burned us before. Default suggestion is `kor`. Set `LANG_HINT` accordingly.
 8. **Confirm transcription mode with the user** if title doesn't clearly indicate it (see "Transcription mode routing"). Surface picked mode + DB target before billing.
-8.5. **Ask public vs private before creating the page** (see "Public vs private" under Routing). Default suggestion: 퍼블릭(team-shared) → primary workspace `Meeting Notes` DB. If 프라이빗, get/create the private parent page and create under it instead. Skip for 1on1 routing (already private). Surface the picked visibility + DB target alongside the mode.
+8.5. *(Notion opt-in only)* **Ask public vs private before creating the page** (see "Public vs private" under Routing). Default suggestion: 퍼블릭(team-shared) → primary workspace `Meeting Notes` DB. If 프라이빗, get/create the private parent page and create under it instead. Skip for 1on1 routing (already private). Surface the picked visibility + DB target alongside the mode.
 9. **For diarize mode: ask the user for the participant list before transcribing.** This is critical — pass the names as `keyterms` to Scribe v2 (most effective bias against name mishears) AND use them for `speaker_X → 실명` mapping in the merge step. Always pre-include **the user's own name** as a default participant; prompt the user only for the *other* participants. Phrase: *"이 회의에 본인 외에 누가 참여하셨나요? (이름을 콤마로 구분해 알려주세요)"*. Empirically: skipping this step or relying on title-derived keyterms alone has produced repeated wrong mappings — Scribe drifts Korean names into similar-sounding alternatives even with partial keyterms. Confirming up front saves an entire archive+rebuild cycle. Add any company/brand names mentioned in the title to keyterms as well. Skip this step for plain transcribe mode (lectures don't need speaker mapping).
 10. **Cost preview — compute and log the estimated cost for the post-run report.** Do NOT ask the user for confirmation — proceed automatically. See "Cost estimation" below.
 
@@ -246,7 +295,7 @@ echo "$DUR_SEC" > "$OUT_DIR/duration_sec.txt"
 
 ```bash
 JOB_ID="$(basename "$AUDIO_FILE" | sed 's/\.[^.]*$//')-$(date +%Y%m%d-%H%M%S)"
-OUT_DIR="$HOME/voice-memo-to-notion-runs/$JOB_ID"
+OUT_DIR="$HOME/voice-memo-2-meeting-note-runs/$JOB_ID"
 mkdir -p "$OUT_DIR"
 ```
 
@@ -496,7 +545,36 @@ structure as Notion blocks here).
 
 Match the summary language to the audio language. Korean audio → Korean minutes.
 
-### 5. Build the page payload
+### 4.5. Write the Obsidian notes (ALWAYS — primary output)
+
+Write the two markdown files described in "Obsidian output" **before** any
+Notion work, so the run's deliverable is safe even if Notion fails or was
+declined:
+
+```bash
+VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/DodoVault"
+MEET_DIR="$VAULT/50 Meetings"
+REC_DATE=<recording date YYYY-MM-DD>   # Voice Memos ZDATE / file mtime
+BASE="$REC_DATE $TITLE"
+# → "$MEET_DIR/$BASE.md"        (summary, with frontmatter)
+# → "$MEET_DIR/$BASE (전사).md" (raw transcript)
+```
+
+- If a file with the same name already exists, append ` (2)` rather than
+  overwriting — never clobber an existing note.
+- Build the summary body in markdown per the Step 4a/4b structure and the
+  mapping table in "Obsidian output". Keep a copy of the rendered markdown in
+  `$OUT_DIR` too (`summary.md`, `transcript.md`) as the run artifact.
+- The vault is a git repo. Do NOT auto-commit — leave the new notes for the
+  user's normal vault workflow unless they ask.
+- After a successful opt-in Notion upload (Step 6), come back and add
+  `notion: <page URL>` to the summary note's frontmatter.
+
+### 5. Build the Notion page payload *(Notion opt-in only)*
+
+**Steps 5–6 run only when the user opted into Notion upload (Preflight #2.5).**
+Convert the already-written Obsidian markdown into Notion blocks — same
+content, block-for-block.
 
 Schema is known — no discovery needed. Defaults:
 
@@ -547,7 +625,7 @@ structure differs by mode:
 - `child_page` blocks cannot be created directly in a `children` array. To
   create a sub-page you POST to `v1/pages` with `parent: {page_id: <parent>}`.
 
-### 6. Create the main page, then the transcript sub-page
+### 6. Create the main page, then the transcript sub-page *(Notion opt-in only)*
 
 Two-phase create — the raw transcript lives in a sub-page so the main page
 stays scannable.
@@ -635,7 +713,8 @@ echo "    Verify in dashboard: https://elevenlabs.io/app/usage"
 ```
 
 Then print:
-- The Notion page URL (clickable).
+- The Obsidian note paths (summary + 전사) — always.
+- The Notion page URL (clickable) — only if the user opted in and it was created.
 - Path to the saved local transcript JSON (so the user has a backup).
 - Mode used (diarize vs plain) and any keyterms passed.
 - The actual cost line above.
@@ -653,11 +732,15 @@ If the actual cost differs from the estimate by > 20 %, call it out — usually 
 
 ## Notes
 
-- Keep the saved JSON transcript under `~/voice-memo-to-notion-runs/<job-id>/`. Don't delete it after upload — useful if the Notion create fails partway and needs to be retried without re-billing ElevenLabs.
+- Keep the saved JSON transcript under `~/voice-memo-2-meeting-note-runs/<job-id>/`. Don't delete it after upload — useful if the Notion create fails partway and needs to be retried without re-billing ElevenLabs.
 - Don't echo `ELEVENLABS_API_KEY` or `NOTION_API_TOKEN` in any logs.
 - The default DB lives in `$NOTION_USER`'s workspace; if the user is in a different workspace, the integration must be installed there too.
 
 ## Lessons learned (empirical, fold into changes)
+
+- **Obsidian is the primary output as of 2026-07-05 (user instruction).** The vault notes
+  (Step 4.5) are always written; Notion is an opt-in mirror asked once in Preflight #2.5.
+  Write the markdown before touching Notion so a Notion failure never loses the deliverable.
 
 - **Scribe v2 is the only transcription path now.** Earlier versions of this skill supported OpenAI's `gpt-4o-transcribe(-diarize)`. We removed it after a head-to-head on a 15-min Korean lecture: same price point (~$0.09 vs $0.10), but OpenAI dropped content, fragmented utterances heavily, emitted `###` segment markers, and — worst — bled the biasing prompt straight into the output. Scribe v2 produced clean flowing text, caught audio events (`[사람들 웅성거리는 소리]`), and rendered numerals the way the speaker actually said them.
 - **Always confirm language with the user before transcribing.** Even if title looks Korean, ask once. Wrong language hint silently produces broken transcripts. Default suggestion: `kor`.

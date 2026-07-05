@@ -2,7 +2,7 @@
 .env
 
 # Runtime artifacts
-voice-memo-to-notion-runs/
+voice-memo-2-meeting-note-runs/
 *.raw.json
 duration_sec.txt
 

@@ -4,7 +4,7 @@ Below is a real example of well-structured meeting minutes generated from a tran
 Use this as the gold standard for format, tone, and level of synthesis when building the
 **4b diarize/meeting** output (Step 4b of `SKILL.md`).
 
-This example is markdown; in `voice-memo-to-notion` you render the same structure as Notion
+This example is markdown; in `voice-memo-2-meeting-note` you render the same structure as Notion
 blocks — the markdown `## N. Topic` → `heading_3`, `**Q. …?**` → a bold-led `paragraph`,
 `A. …` → a `bulleted_list_item`, and the **bolded** key terms → `rich_text` segments with
 `annotations.bold=true`. What matters is the synthesis depth, the thematic clustering, and the
