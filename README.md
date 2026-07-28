@@ -1,6 +1,6 @@
 # dodo-skills
 
-Reusable AI agent skills for Claude Code and other coding agents. Includes a meeting follow-up email drafter and a voice memo → Notion pipeline.
+Reusable AI agent skills for Claude Code and other coding agents. Includes a meeting follow-up email drafter, a voice memo → Notion pipeline, and a macOS performance doctor.
 
 [![skills.sh](https://skills.sh/b/callmejustdodo/dodo-skills)](https://skills.sh/callmejustdodo/dodo-skills)
 
@@ -15,6 +15,7 @@ Or install a single skill:
 ```bash
 npx skills add callmejustdodo/dodo-skills --skill followup-mail
 npx skills add callmejustdodo/dodo-skills --skill voice-memo-2-meeting-note
+npx skills add callmejustdodo/dodo-skills --skill mac-lag-doctor
 ```
 
 ## Skills
@@ -23,6 +24,7 @@ npx skills add callmejustdodo/dodo-skills --skill voice-memo-2-meeting-note
 |-------|--------------|
 | [`followup-mail`](./followup-mail) | Drafts a Korean meeting follow-up email and saves it as a Gmail draft (never sends). |
 | [`voice-memo-2-meeting-note`](./voice-memo-2-meeting-note) | Transcribes audio (ElevenLabs Scribe v2), summarizes, and creates a Notion page. |
+| [`mac-lag-doctor`](./mac-lag-doctor) | Diagnoses macOS lag with evidence — A/B-tests every suspect before blaming it. |
 
 ## Prerequisites
 
@@ -89,6 +91,24 @@ The skill:
 2. Transcribes via ElevenLabs Scribe v2 (with speaker diarization for meetings)
 3. Generates a structured summary (thematic Q&A for meetings, detailed write-up for lectures)
 4. Creates a Notion page with the summary + a raw transcript sub-page
+
+### mac-lag-doctor
+
+Trigger by saying things like:
+- "맥이 렉 걸려", "요즘 느려", "메모리 너무 많이 먹는 것 같아"
+- "why is my mac slow", "what's eating my CPU"
+
+No config, no API keys — everything it uses ships with macOS.
+
+```bash
+mac-lag-doctor/scripts/snapshot.sh          # baseline: CPU lane vs memory lane
+mac-lag-doctor/scripts/ab-test.sh "Siri AI" # quit → measure → verdict → restore
+```
+
+The core discipline: **never blame a process you have not A/B-tested.** The snapshot
+splits CPU-bound from memory-bound causes, flags stuck processes (high CPU for the
+full uptime) and duplicated helpers/MCP servers, and reads Claude Code's daemon spare
+state so claimed sessions aren't killed by mistake.
 
 ## Config (`.env`)
 
