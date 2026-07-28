@@ -2,7 +2,7 @@
 name: mac-lag-doctor
 description: "Diagnose macOS lag/slowness with evidence instead of guesses. Separates CPU-bound from memory-bound causes, finds stuck processes and duplicated helper/MCP processes, and A/B-tests every suspect before blaming it. Use when the user says 렉 걸려, 느려, 버벅여, 메모리 많이 먹는 것 같아, 맥이 느려졌어, 'mac is laggy/slow', 'what's eating my CPU/memory', or asks to diagnose system performance."
 metadata:
-  version: 1.0.0
+  version: 1.1.0
   openclaw:
     category: "system"
 ---
@@ -50,19 +50,32 @@ other process is spamming it with render requests.
 Find candidates by **elapsed time ≈ uptime + sustained CPU**. A process that has been
 pinned at 50% since boot is stuck, not busy.
 
-Known repeat offenders (seen in the wild):
-- `Siri AI` — stuck at ~50% since boot; also drove `WindowServer` to 134%. Killing it
-  (it auto-respawns clean) fixed both. **Check this first.**
-- Menu-bar apps that poll via screen capture (`Ice`, Bartender-likes).
-- Menu-bar apps that redraw charts continuously (`Stats`).
+**System agents go stale.** The highest-yield targets are Apple's own long-running
+agents — they auto-respawn instantly, so restarting one is cheap and safe. Confirmed
+offenders, all caught at `etime == uptime`:
 
-> ⚠️ Menu-bar apps are the *obvious* suspects and are usually **innocent**. In the
-> reference case `Stats` (50.4% vs 48.6%) and `Ice` (56.2% vs 53.8%) both tested clean.
-> A/B them anyway — but do not lead the user toward them without a test.
+| Agent | Observed | Effect of restart |
+|---|---|---|
+| `MenuBarAgent` | stuck; `WindowServer` at 115% | **WindowServer 115.6% → 44.2% (+71pp)** |
+| `Siri AI` | 52% since boot | its own CPU → 0; WindowServer 134% → 48% |
+| `WindowManager` | 50% for 5 days | its own CPU → 0 (but *not* a WindowServer driver) |
+
+Check these **before** third-party apps. Two lessons from those rows:
+
+1. A stuck agent can be guilty of burning its own CPU **without** driving WindowServer
+   (`WindowManager`), or guilty of both (`Siri AI`, `MenuBarAgent`). `ab-test.sh` reports
+   both verdicts separately — read both.
+2. Auto-respawning agents cannot be tested "with vs without". `ab-test.sh` detects the
+   respawn and reframes it as **stale-vs-fresh**, which is the correct experiment.
+
+Third-party menu-bar apps (`Ice`, `Stats`, Bartender-likes) are the *obvious* suspects
+and tested **innocent** in every case so far — `Stats` 50.4% vs 48.6%, `Ice` 56.2% vs
+53.8%. A/B them, but don't lead the user toward them.
 
 ```bash
-bash "$SKILL_DIR/scripts/ab-test.sh" "Siri AI"      # quit → measure → relaunch
-bash "$SKILL_DIR/scripts/ab-test.sh" Stats
+bash "$SKILL_DIR/scripts/ab-test.sh" MenuBarAgent   # measure → restart → measure → verdict
+bash "$SKILL_DIR/scripts/ab-test.sh" "Siri AI"
+bash "$SKILL_DIR/scripts/ab-test.sh" WindowManager
 ```
 
 Verdict threshold: a suspect is guilty only if the target drops by **more than ~10
@@ -174,8 +187,11 @@ These will silently corrupt your numbers:
   print only the summary. Don't measure while streaming output.
 - **Discard `top`'s first sample** — it's cumulative-since-boot, not instantaneous.
   Take N+1 samples, drop the first.
-- **Check for an active workload first.** A running transcription pinning
-  `VoiceMemos` at 100% makes every other reading meaningless. Note it or wait it out.
+- **Check for an active workload first, and re-check between rounds.** A transcription
+  pinning `VoiceMemos` at 100%, or Apple's `PhotoAnalysis` / `mediaanalysisd` / Spotlight
+  `mdworker` kicking in mid-run, makes every reading after it meaningless. These start on
+  their own — a short `etime` next to high CPU is the tell. Note it, or wait it out, and
+  never compare a post-workload number to a pre-workload baseline.
 - **Report ranges, not single reads.** WindowServer swings ±10pp naturally.
 
 ## Shell gotcha (zsh)
