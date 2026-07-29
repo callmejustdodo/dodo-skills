@@ -83,9 +83,18 @@ percentage points** and stays down. Anything smaller is noise.
 
 **Never `kill` WindowServer itself** — it force-logs-out the user. Kill the *driver*.
 
-If nothing tests guilty and `WindowServer` is still hot after days of uptime, the
-honest answer is **log out → log back in** (not a reboot). That respawns WindowServer
-clean. Say this as the remaining option rather than inventing a culprit.
+If nothing tests guilty and `WindowServer` is still hot after days of uptime, say so
+plainly rather than inventing a culprit — and be precise about the remedy:
+
+> **Logging out does NOT restart `WindowServer`.** It is a boot-time system process that
+> survives logout. Verified: after a full logout/login cycle its `etime` still matched
+> uptime (started 2 minutes after `kern.boottime`, 5d22h earlier). **Only a reboot
+> resets it.** Check with `ps -o lstart= -p $(pgrep -x WindowServer)` against
+> `sysctl -n kern.boottime` before promising anything.
+
+Logout is still worth recommending — it does reset per-user agents (`MenuBarAgent`,
+`WindowManager`, `Siri AI`), reclaims accumulated app/session memory, and lets macOS
+shrink the swap file. Just don't sell it as a WindowServer fix.
 
 ### 3. Memory lane — find duplication, not just big numbers
 
@@ -207,7 +216,8 @@ loop, or write the scripts in `#!/usr/bin/env bash` (what `scripts/` does).
 3. Quit GUI apps gracefully (`osascript -e 'tell application "X" to quit'`), not `kill -9`.
 4. Back up any config before editing.
 5. Restore anything you killed that tested innocent.
-6. Prefer **log out → log in** over "reboot" — reset WindowServer, keep uptime cheap.
+6. Reach for **log out → log in** to reset per-user agents and reclaim session memory.
+   It does **not** touch `WindowServer` — that needs a reboot. Don't conflate the two.
 
 ## Reporting
 
