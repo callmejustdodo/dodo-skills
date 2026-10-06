@@ -129,8 +129,8 @@ transcribe mode. Start it with a backlink to the summary note.
 ## Target database (Notion — opt-in only)
 
 **Skip this entire section unless the user opted into Notion upload
-(Preflight #2.5).** Two `Meeting Notes` databases exist; pick by content type.
-Both share the same schema below.
+(Preflight #2.5).** Automatic uploads use the DODO-SPACE personal `Meeting Notes`
+database. Use another database only when the user supplies an explicit destination.
 
 ### Config (.env)
 
@@ -142,69 +142,51 @@ SKILLS_REPO="$(dirname "$(readlink ~/.claude/skills/voice-memo-2-meeting-note)")
 set -a; source "$SKILLS_REPO/.env"; set +a
 ```
 
-This defines `$NOTION_WS_PRIMARY`, `$NOTION_WS_LEGACY`, `$NOTION_USER`, `$NOTION_1ON1_DS`,
-`$NOTION_1ON1_DB`, `$NOTION_1ON1_PARENT_PAGE`, `$NOTION_PRIMARY_MEETING_DB`,
-`$NOTION_PRIMARY_MEETING_DS` (the **default** meeting target, in the primary workspace),
-`$NOTION_MEETING_DB`, `$NOTION_MEETING_DS`, `$NOTION_DEFAULT_DB`, `$NOTION_DEFAULT_DS`
-(the last four are legacy workspace DBs). If any are unset, the `.env` is missing —
-tell the user to `cp .env.example .env` and fill it in.
+The automatic Notion destination uses `$NOTION_WS_LEGACY`, `$NOTION_DEFAULT_DB`,
+and `$NOTION_DEFAULT_DS`. Other IDs may remain in `.env` for explicit legacy or
+user-provided destinations, but never route to them automatically. If the required
+DODO-SPACE variables are unset, the `.env` is missing or incomplete — tell the user
+to `cp .env.example .env` and fill it in.
 
-### Workspace (ALWAYS ASK — user instruction, 2026-06-20)
+### Workspace (DODO-SPACE default — user instruction, 2026-10-03)
 
-**Always ask the user which workspace to target before creating a page.** Never
-silently default to one workspace. The `ntn` CLI's default workspace is **not
-stable** — it gets overwritten to whatever workspace `NOTION_WORKSPACE_ID` last
-targeted, so every `ntn api` call 404s with `Could not find data_source` if the
-pin drifts.
+**DODO-SPACE is the sole automatic workspace.** Do not ask the user to choose a
+workspace or visibility after they opt into Notion. The workspace is personal, so
+pages created in its personal `Meeting Notes` DB need no public/private distinction.
 
-Ask: *"어느 워크스페이스에 올릴까요?"* and present the known options:
-- **Scenic** (primary, `$NOTION_WS_PRIMARY`) — team workspace
-- **DODO-SPACE** (legacy, `$NOTION_WS_LEGACY`) — personal workspace
-
-If the user provides a Notion URL or explicit `database_id`, infer the workspace
-from the response (try primary first; if 404, try legacy). Pin accordingly.
-
-Once the user picks, export the workspace for the whole run:
+Pin the workspace for the whole run because the `ntn` CLI's persisted default is
+not stable:
 
 ```bash
-export NOTION_WORKSPACE_ID=<chosen workspace id>
+export NOTION_WORKSPACE_ID="$NOTION_WS_LEGACY"
 ```
 
 Verify with `ntn api v1/users/me` → `bot.workspace_name` should match the
-chosen workspace. If the workspace isn't in
-`~/.config/notion/workspaces.json`, the user must `ntn login` to it first.
-(Stored workspace ids: primary = `$NOTION_WS_PRIMARY`, legacy = `$NOTION_WS_LEGACY`.)
+DODO-SPACE workspace. If it isn't in `~/.config/notion/workspaces.json`, the
+user must `ntn login` to it first.
+
+If the user explicitly provides a Notion URL, workspace, private parent, or
+`database_id`, that destination overrides the default. Infer and pin the compatible
+workspace from that explicit target; do not probe or suggest unrelated workspaces.
 
 ### Routing
 
-- **1on1 (원온원):** title/label contains `1on1`, `1:1`, `원온원`, or `one on one`
-  (case-insensitive). **This is the default for 1on1s and lives in the primary workspace.**
-  - Workspace: **primary** (`$NOTION_WS_PRIMARY`)
-  - Private DB `1on1 Notes`, under the 🔒 `1on1` top-level page
-    (page id `$NOTION_1ON1_PARENT_PAGE`)
-  - Database id `$NOTION_1ON1_DB`
-  - **Data source (create pages here): `$NOTION_1ON1_DS`**
-  - Schema: `이름` (title), `Date` (date), `상대` (select — partner name options;
-    add new options as needed). Set `상대` to the 1on1 partner. Use diarize mode.
-- **Default / everything else (회의/미팅 and anything not matched above):** use the
-  `Meeting Notes` DB **in the workspace the user selected** (see "Workspace" above).
-  - **Scenic (primary):** data source `$NOTION_PRIMARY_MEETING_DS`, db `$NOTION_PRIMARY_MEETING_DB`
-  - **DODO-SPACE (legacy):** query the user-provided URL/DB, or use `$NOTION_MEETING_DS` (db `$NOTION_MEETING_DB`) / `$NOTION_DEFAULT_DS` (db `$NOTION_DEFAULT_DB`)
-  - Schema: `Meeting name` (title), `Date`, `Attendees` (people), `Category` (multi_select).
+- **All automatic uploads, including 1on1s:** use DODO-SPACE's personal
+  `Meeting Notes` data source `$NOTION_DEFAULT_DS` (db `$NOTION_DEFAULT_DB`,
+  url `notion.com/p/dodo4114/33a2cfba780a8036b829ecd313159b1b`). The schema is
+  `Meeting name` (title), `Date`, `Attendees` (people), `Category` (multi_select).
+  A 1on1 title still selects diarize mode, but must not automatically use the
+  primary-workspace `$NOTION_1ON1_DS`, `$NOTION_1ON1_DB`, or parent page.
+- **Explicit override only:** use a user-provided URL/DB/parent, or the older
+  `$NOTION_MEETING_DS` / `$NOTION_MEETING_DB`, only when the user explicitly
+  requests that compatible destination.
 
 Surface the chosen target to the user before creating the page. If the user
 passes an explicit `database_id` option, that always wins over the routing rule.
 
-**Public vs private — ALWAYS ASK before creating (user instruction, 2026-06-14).**
-After workspace selection and routing, but before building the page, ask the user
-whether the page should be **퍼블릭 (team-shared)** or **프라이빗 (only me)**:
-- **퍼블릭 (team-shared):** create in the routed `Meeting Notes` DB in the chosen
-  workspace — visible to the team.
-- **프라이빗 (only me):** do **not** use the shared DB. Ask the user for the private
-  parent (a 🔒 page only they can see) and create the page under it
-  (`parent: { "page_id": <private_page_id> }`), or offer to create a new private page
-  first. (1on1s already route to the private `1on1 Notes` DB and don't need this prompt.)
-Surface the picked workspace + visibility + DB target together with the mode before billing.
+Surface the DODO-SPACE personal `Meeting Notes` target together with the mode before
+billing. Ask about destination or visibility only when the user explicitly supplies
+another target whose routing details are incomplete.
 
 ### Transcription mode routing
 
@@ -222,7 +204,7 @@ Pick the transcription mode based on the title (case-insensitive).
 Always surface the picked mode to the user along with the routed DB before
 spending credits.
 
-### Shared schema (verified on both DBs)
+### Default schema
 
 - `Meeting name` — **title** (required; populate this with the page title)
 - `Date` — date (optional; default to today's date)
@@ -243,24 +225,23 @@ Run these once at the top of the workflow and bail out with a clear message if a
    needs no confirmation. Ask once: *"옵시디언(50 Meetings)에는 자동 저장돼요.
    노션에도 올릴까요?"* If the user already said so in the request (e.g. "노션에도
    올려줘" → yes; "옵시디언에만" → no), don't re-ask. **If no → skip Preflight
-   #3, #4, #4.5, #8.5 and Steps 5–6 entirely.**
+   #3, #4, #4.5 and Steps 5–6 entirely.** If yes, use the DODO-SPACE personal
+   `Meeting Notes` default without asking workspace or visibility questions.
 3. *(Notion opt-in only)* `command -v ntn` resolves. If missing, install with `curl -fsSL https://ntn.dev | bash` (ask first).
 4. *(Notion opt-in only)* Notion auth works: `ntn doctor` reports `Token valid ✔`. The CLI accepts
    either `NOTION_API_TOKEN` *or* a stored `ntn login` session — don't require
    the env var. If `ntn doctor` shows the token is invalid, prompt the user to
    `ntn login` (it requires opening a browser). (The `Workers enabled` /
    `list workers` warnings are irrelevant — this skill only uses the Pages API.)
-4.5. *(Notion opt-in only)* **Ask the user which workspace to target** (see "Workspace" above). Present
-   the known options (Scenic / DODO-SPACE). Pin the chosen workspace:
-   `export NOTION_WORKSPACE_ID=<chosen id>`. Confirm with
-   `ntn api v1/users/me` → `workspace_name` matches the user's choice.
-   If the user provides a Notion URL or explicit `database_id`, infer the
-   workspace from the API response (try primary first; if 404, try legacy).
+4.5. *(Notion opt-in only)* Pin DODO-SPACE with
+   `export NOTION_WORKSPACE_ID="$NOTION_WS_LEGACY"`. Confirm with
+   `ntn api v1/users/me` → `workspace_name` matches DODO-SPACE. If the user
+   explicitly provides another Notion URL, workspace, parent, or `database_id`,
+   infer and pin the workspace compatible with that destination instead.
 5. `command -v python3` resolves and `python3 -c 'import elevenlabs'` succeeds. If not, run `python3 -m pip install --user elevenlabs` (or `uv pip install elevenlabs`). On macOS, the system `python3` is Apple's Xcode build — `--user` install is the safe fallback.
 6. `command -v ffprobe` resolves (used for duration → cost estimate; the audio itself goes straight to Scribe v2 without re-encoding). On macOS: `brew install ffmpeg`.
 7. **Confirm language with the user.** Always ask: *"녹음 언어가 한국어 맞나요? (다른 언어면 알려주세요)"* — even when title looks Korean. The wrong language hint produces broken transcripts; assuming silently has burned us before. Default suggestion is `kor`. Set `LANG_HINT` accordingly.
 8. **Confirm transcription mode with the user** if title doesn't clearly indicate it (see "Transcription mode routing"). Surface picked mode + DB target before billing.
-8.5. *(Notion opt-in only)* **Ask public vs private before creating the page** (see "Public vs private" under Routing). Default suggestion: 퍼블릭(team-shared) → primary workspace `Meeting Notes` DB. If 프라이빗, get/create the private parent page and create under it instead. Skip for 1on1 routing (already private). Surface the picked visibility + DB target alongside the mode.
 9. **For diarize mode: ask the user for the participant list before transcribing.** This is critical — pass the names as `keyterms` to Scribe v2 (most effective bias against name mishears) AND use them for `speaker_X → 실명` mapping in the merge step. Always pre-include **the user's own name** as a default participant; prompt the user only for the *other* participants. Phrase: *"이 회의에 본인 외에 누가 참여하셨나요? (이름을 콤마로 구분해 알려주세요)"*. Empirically: skipping this step or relying on title-derived keyterms alone has produced repeated wrong mappings — Scribe drifts Korean names into similar-sounding alternatives even with partial keyterms. Confirming up front saves an entire archive+rebuild cycle. Add any company/brand names mentioned in the title to keyterms as well. Skip this step for plain transcribe mode (lectures don't need speaker mapping).
 10. **Cost preview — compute and log the estimated cost for the post-run report.** Do NOT ask the user for confirmation — proceed automatically. See "Cost estimation" below.
 
@@ -578,11 +559,10 @@ content, block-for-block.
 
 Schema is known — no discovery needed. Defaults:
 
-- `parent`: picked by the Routing rule above. **Default (퍼블릭 meeting):**
-  `{ "data_source_id": "$NOTION_PRIMARY_MEETING_DS" }` (primary workspace Meeting Notes).
-  **프라이빗:** `{ "page_id": "<private_parent_page_id>" }` instead.
-  **Legacy DODO (explicit only):** `$NOTION_MEETING_DS` / `$NOTION_DEFAULT_DS`.
-  Override with the `database_id` option when supplied.
+- `parent`: **automatic DODO-SPACE default:**
+  `{ "data_source_id": "$NOTION_DEFAULT_DS" }` (personal Meeting Notes).
+  **Legacy 회의록 DB (explicit only):** `$NOTION_MEETING_DS`.
+  A user-provided URL/DB/parent overrides this default when supplied.
 - `properties.Meeting name.title[0].text.content`: page title (audio filename without ext, or user override)
 - `properties.Date.date.start`: today's date in `YYYY-MM-DD` (use `date +%F`)
 
@@ -734,7 +714,7 @@ If the actual cost differs from the estimate by > 20 %, call it out — usually 
 
 - Keep the saved JSON transcript under `~/voice-memo-2-meeting-note-runs/<job-id>/`. Don't delete it after upload — useful if the Notion create fails partway and needs to be retried without re-billing ElevenLabs.
 - Don't echo `ELEVENLABS_API_KEY` or `NOTION_API_TOKEN` in any logs.
-- The default DB lives in `$NOTION_USER`'s workspace; if the user is in a different workspace, the integration must be installed there too.
+- The default DB lives in DODO-SPACE; if the user explicitly targets another workspace, the integration must be installed there too.
 
 ## Lessons learned (empirical, fold into changes)
 
@@ -763,10 +743,10 @@ If the actual cost differs from the estimate by > 20 %, call it out — usually 
 - **`ntn api` reads the body from stdin, not `-d @file`:** pass JSON via `cat payload.json | ntn api v1/pages -X POST`. The `-d` flag only accepts an inline JSON string.
 - **Inserting blocks mid-page (`after` field) requires the 2022-06-28 Notion version:** the current default rejects `after` on `PATCH v1/blocks/<id>/children`. Use `--notion-version 2022-06-28` when you need positional insertion (e.g. adding an Action Plan into an existing page).
 - **Voice Memos titles live in `ZENCRYPTEDTITLE`, not `ZCUSTOMLABEL`:** despite the name, the value reads as plaintext through SQLite. `ZCUSTOMLABEL` is usually a default ISO timestamp.
-- **Always ask the user which workspace to target — never silently default.** Present
-  Scenic (primary) and DODO-SPACE (legacy) as options. Then ask 퍼블릭 vs 프라이빗 within
-  the chosen workspace. Pin `NOTION_WORKSPACE_ID` to the chosen workspace before any
-  `ntn api` call. If the user provides a Notion URL, infer the workspace from the API.
+- **DODO-SPACE is the sole automatic Notion destination as of 2026-10-03.** Do not
+  ask for workspace or public/private choices after Notion opt-in. Pin
+  `$NOTION_WS_LEGACY` and use `$NOTION_DEFAULT_DS` / `$NOTION_DEFAULT_DB`. Only an
+  explicit user-provided URL, workspace, DB, or parent overrides this destination.
 - **The `ntn` default workspace is not stable — always pin explicitly.** `ntn` persists the
   last-used `NOTION_WORKSPACE_ID` into `~/.config/notion/config.json` →
   `defaultWorkspaceIds.prod`, so a prior run can drift the default and make every `ntn api`
@@ -781,3 +761,12 @@ If the actual cost differs from the estimate by > 20 %, call it out — usually 
   A backgrounded `bash` with inline `<<'PY'` heredocs silently stalled mid-script (only the first
   line printed). Prefer a written `.sh` file run with `bash file.sh`, or `python3 -c`
   one-liners, and write results/IDs to a file you can read back.
+- **DODO-SPACE has its own personal Meeting Notes DB — route all automatic uploads there.**
+  `$NOTION_DEFAULT_DB` / `$NOTION_DEFAULT_DS` (user-confirmed 2026-07-16,
+  `notion.com/p/dodo4114/33a2cfba780a8036b829ecd313159b1b`). Since the whole DODO-SPACE
+  workspace is personal, no visibility or private-parent prompt is needed. The older
+  primary-workspace 1on1 IDs are explicit-target-only and must not be selected by title.
+- **Check for a companion recording when a memo looks truncated.** A "세미나/회의" memo that is
+  only 1–2 min long and cuts mid-sentence is usually an accidental stop; query the Voice Memos
+  DB for the next recording starting within ~2 min (often auto-named by location, e.g.
+  "Bongcheon-dong 11") and offer to transcribe it as the main body, merging both into one note.
