@@ -1,0 +1,4 @@
+interface:
+  display_name: "Product Planning Interview"
+  short_description: "Plan a product through interviews and mockup approval"
+  default_prompt: "Use $product-planning to interview me, write the product documents in documentations/, create mockups for my approval, and finish the implementation plan."

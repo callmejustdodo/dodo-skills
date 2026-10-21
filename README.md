@@ -1,6 +1,6 @@
 # dodo-skills
 
-Reusable AI agent skills for Claude Code and other coding agents. Includes a meeting follow-up email drafter, a voice memo → Notion pipeline, and a macOS performance doctor.
+Reusable AI agent skills for Claude Code and other coding agents. Includes a meeting follow-up email drafter, a voice memo → Notion pipeline, a macOS performance doctor, and a product planning interviewer.
 
 [![skills.sh](https://skills.sh/b/callmejustdodo/dodo-skills)](https://skills.sh/callmejustdodo/dodo-skills)
 
@@ -16,6 +16,7 @@ Or install a single skill:
 npx skills add callmejustdodo/dodo-skills --skill followup-mail
 npx skills add callmejustdodo/dodo-skills --skill voice-memo-2-meeting-note
 npx skills add callmejustdodo/dodo-skills --skill mac-lag-doctor
+npx skills add callmejustdodo/dodo-skills --skill product-planning
 ```
 
 ## Skills
@@ -25,6 +26,7 @@ npx skills add callmejustdodo/dodo-skills --skill mac-lag-doctor
 | [`followup-mail`](./followup-mail) | Drafts a Korean meeting follow-up email and saves it as a Gmail draft (never sends). |
 | [`voice-memo-2-meeting-note`](./voice-memo-2-meeting-note) | Transcribes audio (ElevenLabs Scribe v2), summarizes, and creates a Notion page. |
 | [`mac-lag-doctor`](./mac-lag-doctor) | Diagnoses macOS lag with evidence — A/B-tests every suspect before blaming it. |
+| [`product-planning`](./product-planning) | Interviews you, writes planning documents, gets mockup approval, and produces an AI implementation plan. |
 
 ## Prerequisites
 
@@ -109,6 +111,22 @@ The core discipline: **never blame a process you have not A/B-tested.** The snap
 splits CPU-bound from memory-bound causes, flags stuck processes (high CPU for the
 full uptime) and duplicated helpers/MCP servers, and reads Claude Code's daemon spare
 state so claimed sessions aren't killed by mistake.
+
+### product-planning
+
+Trigger by saying things like:
+- "제품 기획 도와줘", "PRD 써줘", "MVP 기획하자"
+- "help me plan my product", "write a PRD"
+
+Or invoke it directly from your product project: `/product-planning` in Claude Code, `$product-planning` in Codex. Add your idea, or ask it to resume existing documents.
+
+The skill:
+1. Interviews you in focused rounds about real usage, priorities, and reasons, and leaves product decisions to you unless you delegate them
+2. Writes seven planning documents (one-pager → PRD → user stories → screens/flows → tech spec → frontend → backend) plus `implementation_plan.md` under `documentations/`, one at a time (or together, if you ask), and waits for your confirmation on each
+3. After the screens/flows document, builds an HTML mockup at `documentations/mockups/index.html` and waits for separate approval before any technical design
+4. Proposes a starting stack (Next.js + Supabase for web, Swift or React Native for apps) and records your choice or explicit delegation
+
+Questions and replies follow your language. The documents are always written in English, quoting your own words with an English gloss; mockup UI copy uses your end users' language. It resumes from existing documents and re-reviews only what a changed decision affects. No external service or API key is required. Optional companion skills are listed in [skill-options.md](./product-planning/references/skill-options.md).
 
 ## Config (`.env`)
 
