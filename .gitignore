@@ -5,6 +5,10 @@
 voice-memo-2-meeting-note-runs/
 *.raw.json
 duration_sec.txt
+card-news-publish/decks/
+card-news-publish/state/
+__pycache__/
+.pytest_cache/
 
 # OS / editor cruft
 .DS_Store

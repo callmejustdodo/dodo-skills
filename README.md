@@ -1,6 +1,6 @@
 # dodo-skills
 
-Reusable AI agent skills for Claude Code and other coding agents. Includes a meeting follow-up email drafter, a voice memo → Notion pipeline, a macOS performance doctor, and a product planning interviewer.
+Reusable AI agent skills for Claude Code and other coding agents. Includes a meeting follow-up email drafter, a voice memo → Notion pipeline, a macOS performance doctor, a product planning interviewer, and a Slack-approved card-news publisher for Instagram and Threads.
 
 [![skills.sh](https://skills.sh/b/callmejustdodo/dodo-skills)](https://skills.sh/callmejustdodo/dodo-skills)
 
@@ -17,6 +17,7 @@ npx skills add callmejustdodo/dodo-skills --skill followup-mail
 npx skills add callmejustdodo/dodo-skills --skill voice-memo-2-meeting-note
 npx skills add callmejustdodo/dodo-skills --skill mac-lag-doctor
 npx skills add callmejustdodo/dodo-skills --skill product-planning
+npx skills add callmejustdodo/dodo-skills --skill card-news-publish
 ```
 
 ## Skills
@@ -27,6 +28,7 @@ npx skills add callmejustdodo/dodo-skills --skill product-planning
 | [`voice-memo-2-meeting-note`](./voice-memo-2-meeting-note) | Transcribes audio (ElevenLabs Scribe v2), summarizes, and creates a Notion page. |
 | [`mac-lag-doctor`](./mac-lag-doctor) | Diagnoses macOS lag with evidence — A/B-tests every suspect before blaming it. |
 | [`product-planning`](./product-planning) | Interviews you, writes planning documents, gets mockup approval, and produces an AI implementation plan. |
+| [`card-news-publish`](./card-news-publish) | Sends a Figma card-news deck to Slack for approval and publishes it as an Instagram + Threads carousel on [발행]. |
 
 ## Prerequisites
 
@@ -37,6 +39,8 @@ npx skills add callmejustdodo/dodo-skills --skill product-planning
 | `ELEVENLABS_API_KEY` | voice-memo-2-meeting-note | [elevenlabs.io](https://elevenlabs.io) |
 | `ffprobe` | voice-memo-2-meeting-note | `brew install ffmpeg` |
 | `python3` + `elevenlabs` SDK | voice-memo-2-meeting-note | `pip install elevenlabs` |
+| [`uv`](https://docs.astral.sh/uv/) | card-news-publish | `brew install uv` |
+| Slack app (Socket Mode), Meta Instagram/Threads tokens, Supabase project | card-news-publish | See [`card-news-publish/SKILL.md`](./card-news-publish/SKILL.md); keys go in `card-news-publish/.env` |
 
 ## Setup
 
@@ -127,6 +131,19 @@ The skill:
 4. Proposes a starting stack (Next.js + Supabase for web, Swift or React Native for apps) and records your choice or explicit delegation
 
 Questions and replies follow your language. The documents are always written in English, quoting your own words with an English gloss; mockup UI copy uses your end users' language. It resumes from existing documents and re-reviews only what a changed decision affects. No external service or API key is required. Optional companion skills are listed in [skill-options.md](./product-planning/references/skill-options.md).
+
+### card-news-publish
+
+Trigger by saying things like:
+- "카드뉴스 발행 컨펌 요청해줘", "슬랙으로 컨펌 받아줘"
+- "인스타/스레드에 올려줘", "publish this carousel"
+
+The skill:
+1. Turns Figma slide exports into Instagram-ready JPEGs plus a one-image preview grid (`scripts/prepare_deck.py`)
+2. Runs a rule-based Slack bot that posts a confirm request — preview, Figma link, captions, [발행]/[발행 취소] — when an allowed user posts the deck's trigger, or right away with `scripts/confirm.py`
+3. On [발행] (after a confirm dialog), uploads the slides to a Supabase public bucket and publishes an Instagram and a Threads carousel, then updates the Slack message with links
+
+Keys live in a gitignored `card-news-publish/.env` (template: `card-news-publish/.env.example`). Missing platform keys make [발행] skip that platform and say why.
 
 ## Config (`.env`)
 
