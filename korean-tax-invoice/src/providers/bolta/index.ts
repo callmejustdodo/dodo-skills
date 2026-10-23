@@ -243,16 +243,30 @@ export class BoltaProvider implements TaxInvoiceProvider {
       throw new ProviderRejectedError(text.slice(0, 300), res.status)
     }
 
+    // 발행 완료 건의 응답에는 status 필드가 없다. 실측(2026-10, 테스트 키):
+    //
+    //   { "issuanceKey": "IssuanceKey_...", "issuedAt": "2026-10-23T16:19:56Z",
+    //     "ntsTransactionId": "test_nts_...", "invoice": { ... } }
+    //
+    // 이 엔드포인트는 발행 완료된 건만 돌려주므로 issuedAt 이 있으면 발행된
+    // 것이다. status 만 보면 발행된 계산서가 UNKNOWN 으로 보이고, 그걸
+    // "접수 안 됨"으로 읽으면 재발행 사고로 이어진다.
     const body = (await res.json()) as {
       status?: string
+      issuedAt?: string
+      ntsTransactionId?: string
       ntsConfirmNum?: string
       taxInvoiceUrl?: string
       cause?: { message?: string; code?: string }
     }
 
+    const mapped = mapStatus(body.status)
+    // 라이브 키에서 ntsTransactionId 가 승인번호 그대로인지는 아직 확인 못 했다.
+    const ntsConfirmNum = body.ntsConfirmNum ?? body.ntsTransactionId
+
     return {
-      status: mapStatus(body.status),
-      ...(body.ntsConfirmNum ? { ntsConfirmNum: body.ntsConfirmNum } : {}),
+      status: mapped === 'UNKNOWN' && body.issuedAt ? 'ISSUED' : mapped,
+      ...(ntsConfirmNum ? { ntsConfirmNum } : {}),
       ...(body.taxInvoiceUrl ? { invoiceUrl: body.taxInvoiceUrl } : {}),
       ...(body.cause?.message ? { failureReason: body.cause.message } : {}),
     }

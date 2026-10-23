@@ -62,7 +62,11 @@ async function main() {
 
   console.log(`조회 기준: ${refMode ? '관리번호' : 'issuanceKey'} ${key}`)
   console.log(`상태: ${r.status} — ${LABEL[r.status] ?? ''}`)
-  if (r.ntsConfirmNum) console.log(`국세청 승인번호: ${r.ntsConfirmNum}`)
+  if (r.ntsConfirmNum) {
+    // 테스트 키는 test_nts_ 로 시작하는 가짜 번호를 준다.
+    const fake = r.ntsConfirmNum.startsWith('test_') ? ' (가상 발행 — 실제 승인번호 아님)' : ''
+    console.log(`국세청 승인번호: ${r.ntsConfirmNum}${fake}`)
+  }
   if (r.invoiceUrl) console.log(`세금계산서: ${r.invoiceUrl}`)
   if (r.failureReason) console.log(`실패 사유: ${r.failureReason}`)
 

@@ -169,6 +169,30 @@ describe('오류 구분 — 중복 발행 방지의 핵심', () => {
   })
 })
 
+describe('상태 조회', () => {
+  it('발행 완료 응답은 status 가 없어도 ISSUED 로 본다', async () => {
+    // 실측(2026-10, 테스트 키) 응답 모양. status 필드가 없다.
+    const f = okFetch({
+      issuanceKey: 'IssuanceKey_K',
+      issuedAt: '2026-10-23T16:19:56.748471Z',
+      ntsTransactionId: 'test_nts_K',
+      invoice: { date: '2026-10-24', purpose: 'CLAIM' },
+    })
+    const r = await makeProvider(f).getStatus('IssuanceKey_K')
+    expect(r).toMatchObject({ status: 'ISSUED', ntsConfirmNum: 'test_nts_K' })
+  })
+
+  it('issuedAt 도 status 도 없으면 ISSUED 로 넘겨짚지 않는다', async () => {
+    const r = await makeProvider(okFetch({ issuanceKey: 'K' })).getStatus('K')
+    expect(r.status).toBe('UNKNOWN')
+  })
+
+  it('404 는 UNKNOWN', async () => {
+    const r = await makeProvider(errFetch(404, '{}')).getStatus('K')
+    expect(r.status).toBe('UNKNOWN')
+  })
+})
+
 describe('웹훅', () => {
   const provider = makeProvider(okFetch({}))
 
