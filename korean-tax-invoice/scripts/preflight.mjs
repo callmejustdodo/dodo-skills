@@ -13,6 +13,8 @@
  *   - 발급자(공급자) 등록 여부와 공동인증서 만료일
  */
 
+import './load-env.mjs'
+
 const API_KEY = process.env.BOLTA_API_KEY
 const BASE = process.env.BOLTA_API_BASE_URL ?? 'https://xapi.bolta.io'
 

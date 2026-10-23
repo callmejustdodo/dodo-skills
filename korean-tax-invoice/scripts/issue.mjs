@@ -14,6 +14,7 @@
  * 요청 파일 형식은 examples/request.json 을 보라.
  */
 
+import './load-env.mjs'
 import { readFileSync } from 'node:fs'
 
 import { existsSync } from 'node:fs'

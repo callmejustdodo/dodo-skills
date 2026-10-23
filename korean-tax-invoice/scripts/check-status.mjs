@@ -18,6 +18,7 @@
  * 만든 값이라 응답을 못 받았을 때도 항상 손에 있다.
  */
 
+import './load-env.mjs'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'

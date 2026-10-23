@@ -44,7 +44,7 @@ npx skills add callmejustdodo/dodo-skills --skill korean-tax-invoice
 | [`uv`](https://docs.astral.sh/uv/) | card-news-publish | `brew install uv` |
 | Slack app (Socket Mode), Meta Instagram/Threads tokens, Supabase project | card-news-publish | See [`card-news-publish/SKILL.md`](./card-news-publish/SKILL.md); keys go in `card-news-publish/.env` |
 | Node.js 18+ + one-time build | korean-tax-invoice | `cd korean-tax-invoice && npm install && npm run build` |
-| `BOLTA_API_KEY` | korean-tax-invoice | [Bolta](https://app.bolta.io) → 개발자센터 → API 키 (`test_` = virtual, `live_` = real) |
+| `BOLTA_API_KEY` | korean-tax-invoice | [Bolta](https://app.bolta.io) → 개발자센터 → API 키 (`test_` = virtual, `live_` = real); goes in `korean-tax-invoice/.env` or your shell |
 
 ## Setup
 
@@ -155,14 +155,14 @@ Trigger by saying things like:
 - "고객사에 9월 이용료 50만원 세금계산서 발행해줘"
 - "볼타로 세금계산서 발행하려는데 준비됐는지 봐줘"
 
-Vendored as-is from [sdkfile/korean-tax-invoice](https://github.com/sdkfile/korean-tax-invoice) (MIT, commit `74eaddf`). Build once after cloning — the scripts import `dist/`:
+Vendored from [sdkfile/korean-tax-invoice](https://github.com/sdkfile/korean-tax-invoice) (MIT, commit `74eaddf`), with one local change: the scripts load `korean-tax-invoice/.env` on their own. Build once after cloning — the scripts import `dist/`:
 
 ```bash
 cd korean-tax-invoice && npm install && npm run build
-export BOLTA_API_KEY=test_xxxxx
+cp .env.example .env    # then set BOLTA_API_KEY=test_...
 ```
 
-The skill runs a preflight, validates the request, shows you exactly what will be issued, and only issues with `--confirm` after you say yes. The scripts read `BOLTA_API_KEY` from the shell environment; they do not load `.env` on their own.
+The skill runs a preflight, validates the request, shows you exactly what will be issued, and only issues with `--confirm` after you say yes. The key lives in a gitignored `korean-tax-invoice/.env`; a `BOLTA_API_KEY` exported in your shell takes precedence over it.
 
 ## Config (`.env`)
 

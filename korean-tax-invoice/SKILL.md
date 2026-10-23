@@ -44,6 +44,9 @@ npm run build        # scripts/ 가 dist/ 를 쓴다
 export BOLTA_API_KEY=test_xxxxx    # 볼타 개발자센터 > API 키
 ```
 
+스킬 폴더의 `.env` 에 `BOLTA_API_KEY=...` 로 넣어도 된다. 스크립트가 알아서
+읽고, 셸에 export 한 값이 있으면 그게 우선한다.
+
 - `test_` 로 시작 → 가상 발행. 국세청에 가지 않는다.
 - `live_` 로 시작 → **실제 발행.** 되돌릴 수 없다.
 
