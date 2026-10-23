@@ -20,7 +20,22 @@ def fallback_text(deck, prefix="카드뉴스 발행 컨펌 요청"):
     return f"{prefix}: {deck['title']} — 피그마: <{deck['figma_url']}>"
 
 
-def build_blocks(deck, owner, file_id=None, status=None):
+def retry_actions(deck, platforms):
+    names = "·".join(LABELS[p] for p in platforms)
+    return {"type": "actions", "block_id": f"retry_{deck['slug']}", "elements": [
+        {"type": "button", "action_id": "retry", "text": {"type": "plain_text", "text": f"{names} 다시 시도"}, "style": "primary",
+         "value": f"{action_value(deck)}:{','.join(platforms)}",
+         "confirm": {
+             "title": {"type": "plain_text", "text": "다시 게시할까요?"},
+             "text": {"type": "mrkdwn", "text": f"{names}에 {len(deck['slides'])}장 캐러셀을 다시 게시해요. 성공하면 바로 공개돼요."},
+             "confirm": {"type": "plain_text", "text": "다시 시도"},
+             "deny": {"type": "plain_text", "text": "돌아가기"},
+             "style": "primary",
+         }},
+    ]}
+
+
+def build_blocks(deck, owner, file_id=None, status=None, retry=None):
     n = len(deck["slides"])
     context = f"{n}장 · {deck['meta']}" if deck.get("meta") else f"{n}장"
     if deck.get("warning"):
@@ -43,6 +58,8 @@ def build_blocks(deck, owner, file_id=None, status=None):
     blocks.append({"type": "divider"})
     if status is not None:
         blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": status}})
+        if retry:
+            blocks.append(retry_actions(deck, retry))
         return blocks
     where = platforms_label(deck)
     blocks += [
@@ -62,7 +79,9 @@ def build_blocks(deck, owner, file_id=None, status=None):
     return blocks
 
 
-def status_publishing(deck, user, when):
+def status_publishing(deck, user, when, only=None):
+    if only:
+        return f":repeat: <@{user}> 님이 다시 시도했어요 · {when}\n{'·'.join(LABELS[p] for p in only)}에 다시 게시하는 중이에요…"
     return f":hourglass_flowing_sand: <@{user}> 님이 발행을 승인했어요 · {when}\n{platforms_label(deck)}에 게시하는 중이에요…"
 
 
@@ -70,8 +89,16 @@ def status_cancelled(user, when):
     return f":no_entry_sign: <@{user}> 님이 발행을 취소했어요 · {when}"
 
 
-def status_result(user, when, result):
-    lines = [f":white_check_mark: <@{user}> 님이 발행을 승인했어요 · {when}"]
+def failed_platforms(result, attempted):
+    """다시 시도할 플랫폼. 업로드 전 단계에서 실패했으면 시도한 플랫폼 전부."""
+    if result.get("fatal"):
+        return list(attempted)
+    return [p for p in LABELS if result.get("results", {}).get(p, {}).get("error")]
+
+
+def status_result(user, when, result, retried=False):
+    verb = "다시 시도했어요" if retried else "발행을 승인했어요"
+    lines = [f":white_check_mark: <@{user}> 님이 {verb} · {when}"]
     if result.get("fatal"):
         lines.append(f":warning: 게시하지 못했어요 — {result['fatal'][:600]}")
         return "\n".join(lines)

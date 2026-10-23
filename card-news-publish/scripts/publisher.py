@@ -27,7 +27,12 @@ TH_BASE = "https://graph.threads.net/v1.0"
 
 
 class PublishError(Exception):
-    pass
+    def __init__(self, message, transient=False):
+        super().__init__(message)
+        self.transient = transient
+
+
+TRANSIENT_HINTS = ("timeout", "unknown error", "please retry", "try again", "temporarily")
 
 
 def missing(env, keys):
@@ -73,7 +78,9 @@ def _check(resp, what):
     err = data.get("error") if isinstance(data, dict) else None
     if resp.status_code >= 400 or err:
         msg = err.get("message") if isinstance(err, dict) else (data.get("message") or err or data.get("raw") or "")
-        raise PublishError(f"{what} 실패 ({resp.status_code}): {msg}")
+        transient = (resp.status_code >= 500 or (isinstance(err, dict) and bool(err.get("is_transient")))
+                     or any(h in str(msg).lower() for h in TRANSIENT_HINTS))
+        raise PublishError(f"{what} 실패 ({resp.status_code}): {msg}", transient=transient)
     return data
 
 
@@ -111,7 +118,7 @@ def upload_slides(env, files, prefix):
         path = f"{prefix}/{os.path.basename(p)}"
         with open(p, "rb") as f:
             r = requests.post(f"{url}/storage/v1/object/{bucket}/{path}", data=f.read(), timeout=60,
-                              headers=_sb_headers(key, {"Content-Type": "image/jpeg", "x-upsert": "true", "cache-control": "3600"}))
+                              headers=_sb_headers(key, {"Content-Type": "image/jpeg", "x-upsert": "true", "cache-control": "max-age=3600"}))
         _check(r, f"Supabase 업로드 {os.path.basename(p)}")
         public = f"{url}/storage/v1/object/public/{bucket}/{path}"
         chk = requests.get(public, timeout=20)
@@ -131,10 +138,30 @@ def _get(url, what, **params):
     return _check(requests.get(url, params=params, timeout=30), what)
 
 
+def _create(env, url, what, **params):
+    """컨테이너 생성처럼 다시 해도 안전한 요청만 일시 오류 때 재시도한다. 게시(_publish) 단계에는 쓰지 않는다."""
+    base = float(env.get("PUBLISH_RETRY_BASE") or 3)
+    for attempt, wait in enumerate((1, 3, 6, None)):
+        try:
+            return _post(url, what, **params)
+        except PublishError as e:
+            if not e.transient or wait is None:
+                raise
+        except requests.RequestException as e:
+            if wait is None:
+                raise PublishError(f"{what} 실패: {e}", transient=True) from None
+        time.sleep(base * wait)
+
+
 def _wait(fetch, field, label, interval, timeout):
     deadline = time.time() + timeout
     while True:
-        data = fetch()
+        try:
+            data = fetch()
+        except PublishError as e:  # 상태 조회의 일시 오류는 마감 전까지 다시 본다
+            if not e.transient or time.time() > deadline:
+                raise
+            data = {}
         status = data.get(field)
         if status in ("FINISHED", "PUBLISHED"):
             return
@@ -145,47 +172,46 @@ def _wait(fetch, field, label, interval, timeout):
         time.sleep(interval)
 
 
-def publish_instagram(env, urls, caption, interval, timeout):
-    base = env.get("IG_GRAPH_BASE") or IG_BASE
-    uid, tok = env["IG_USER_ID"], env["IG_ACCESS_TOKEN"]
-    status = lambda cid: _get(f"{base}/{cid}", "인스타 상태 확인", fields="status_code", access_token=tok)
-    kids = [_post(f"{base}/{uid}/media", f"인스타 이미지 컨테이너 {i + 1}", image_url=u, is_carousel_item="true", access_token=tok)["id"]
-            for i, u in enumerate(urls)]
+def _carousel(env, urls, caption, interval, timeout, *, label, base, uid, tok, create_edge, publish_edge, item_params, caption_field, status_fields):
+    """이미지 컨테이너 → 캐러셀 컨테이너 → 게시. 인스타·스레드 모두 같은 순서다."""
+    gap = float(env.get("PUBLISH_ITEM_GAP") or 1)
+    status_field = status_fields.split(",")[0]
+    status = lambda cid: _get(f"{base}/{cid}", f"{label} 상태 확인", fields=status_fields, access_token=tok)
+    kids = []
+    for i, u in enumerate(urls):
+        if i:
+            time.sleep(gap)
+        kids.append(_create(env, f"{base}/{uid}/{create_edge}", f"{label} 이미지 컨테이너 {i + 1}", image_url=u, is_carousel_item="true", access_token=tok, **item_params)["id"])
     for i, cid in enumerate(kids):
-        _wait(lambda cid=cid: status(cid), "status_code", f"인스타 이미지 {i + 1}", interval, timeout)
-    car = _post(f"{base}/{uid}/media", "인스타 캐러셀 컨테이너", media_type="CAROUSEL", children=",".join(kids), caption=caption, access_token=tok)["id"]
-    _wait(lambda: status(car), "status_code", "인스타 캐러셀", interval, timeout)
-    media = _post(f"{base}/{uid}/media_publish", "인스타 게시", creation_id=car, access_token=tok)["id"]
+        _wait(lambda cid=cid: status(cid), status_field, f"{label} 이미지 {i + 1}", interval, timeout)
+    car = _create(env, f"{base}/{uid}/{create_edge}", f"{label} 캐러셀 컨테이너", media_type="CAROUSEL", children=",".join(kids), access_token=tok, **{caption_field: caption})["id"]
+    _wait(lambda: status(car), status_field, f"{label} 캐러셀", interval, timeout)
+    post = _post(f"{base}/{uid}/{publish_edge}", f"{label} 게시", creation_id=car, access_token=tok)["id"]
     try:
-        link = _get(f"{base}/{media}", "인스타 링크 조회", fields="permalink", access_token=tok).get("permalink")
-    except PublishError:
-        link = None
-    return {"id": media, "permalink": link}
-
-
-def publish_threads(env, urls, text, interval, timeout):
-    base = env.get("THREADS_GRAPH_BASE") or TH_BASE
-    uid, tok = env["THREADS_USER_ID"], env["THREADS_ACCESS_TOKEN"]
-    status = lambda cid: _get(f"{base}/{cid}", "스레드 상태 확인", fields="status,error_message", access_token=tok)
-    kids = [_post(f"{base}/{uid}/threads", f"스레드 이미지 컨테이너 {i + 1}", media_type="IMAGE", image_url=u, is_carousel_item="true", access_token=tok)["id"]
-            for i, u in enumerate(urls)]
-    for i, cid in enumerate(kids):
-        _wait(lambda cid=cid: status(cid), "status", f"스레드 이미지 {i + 1}", interval, timeout)
-    car = _post(f"{base}/{uid}/threads", "스레드 캐러셀 컨테이너", media_type="CAROUSEL", children=",".join(kids), text=text, access_token=tok)["id"]
-    _wait(lambda: status(car), "status", "스레드 캐러셀", interval, timeout)
-    post = _post(f"{base}/{uid}/threads_publish", "스레드 게시", creation_id=car, access_token=tok)["id"]
-    try:
-        link = _get(f"{base}/{post}", "스레드 링크 조회", fields="permalink", access_token=tok).get("permalink")
+        link = _get(f"{base}/{post}", f"{label} 링크 조회", fields="permalink", access_token=tok).get("permalink")
     except PublishError:
         link = None
     return {"id": post, "permalink": link}
 
 
+def publish_instagram(env, urls, caption, interval, timeout):
+    return _carousel(env, urls, caption, interval, timeout, label="인스타", base=env.get("IG_GRAPH_BASE") or IG_BASE,
+                     uid=env["IG_USER_ID"], tok=env["IG_ACCESS_TOKEN"], create_edge="media", publish_edge="media_publish",
+                     item_params={}, caption_field="caption", status_fields="status_code")
+
+
+def publish_threads(env, urls, text, interval, timeout):
+    return _carousel(env, urls, text, interval, timeout, label="스레드", base=env.get("THREADS_GRAPH_BASE") or TH_BASE,
+                     uid=env["THREADS_USER_ID"], tok=env["THREADS_ACCESS_TOKEN"], create_edge="threads", publish_edge="threads_publish",
+                     item_params={"media_type": "IMAGE"}, caption_field="text", status_fields="status,error_message")
+
+
 PUBLISHERS = {"instagram": publish_instagram, "threads": publish_threads}
 
 
-def publish_all(deck, env=None, log=print):
-    """발행 결과를 돌려준다. 업로드 전 단계 실패는 PublishError로 올린다."""
+def publish_all(deck, env=None, log=print, only=None):
+    """발행 결과를 돌려준다. only가 있으면 그 플랫폼만 게시한다(재시도용).
+    업로드 전 단계 실패는 PublishError로 올린다."""
     env = env if env is not None else decklib.load_env()
     errs = validate_assets(deck)
     if errs:
@@ -193,6 +219,8 @@ def publish_all(deck, env=None, log=print):
 
     targets, skipped = [], {}
     for name, label, keys in PLATFORMS:
+        if only and name not in only:
+            continue
         gaps = missing(env, keys)
         if name not in deck["captions"]:
             skipped[name] = "captions.json에 캡션 없음"

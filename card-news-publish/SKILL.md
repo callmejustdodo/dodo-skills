@@ -119,6 +119,14 @@ The request shows the preview image, Figma link, both captions, and [발행]/[�
 The Slack message is updated with per-platform links or the redacted error. One platform failing does not
 block the other. Logs: `state/decisions.jsonl`, `state/publish_log.jsonl`.
 
+Meta often answers container creation with transient errors (`Timeout`, `An unknown error occurred`,
+`is_transient: true`) even when the image URL is fine. Container creation (image items and the carousel)
+is retried up to 4 times with backoff (`PUBLISH_RETRY_BASE`, default 3 s → 3/9/18 s) and items are spaced by
+`PUBLISH_ITEM_GAP` (default 1 s). The final `media_publish` / `threads_publish` call is **never** retried,
+because a lost response may still have published. If a platform still fails, the result message shows a
+**[<platform> 다시 시도]** button (with its own confirm dialog) that republishes only the failed platforms and
+keeps the links of the ones that succeeded (`state/message_results.json`).
+
 ### 5. Maintenance
 
 - Tokens expire after 60 days: `uv run --with requests python scripts/publisher.py refresh-tokens` (rewrites `.env`).

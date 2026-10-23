@@ -40,8 +40,12 @@ def deck(tmp_path, monkeypatch):
 
 
 class Fake:
-    def __init__(self, fail_threads_carousel=False):
+    def __init__(self, fail_threads_carousel=False, flaky_items=None, permanent_item_error=None, flaky_publish=None):
         self.fail_threads_carousel = fail_threads_carousel
+        self.flaky_items = dict(flaky_items or {})  # {("ig", 3): 2} → 3번째 인스타 이미지가 일시 오류 2번 뒤 성공
+        self.permanent_item_error = permanent_item_error  # ("ig", 2) → 그 이미지는 영구 오류
+        self.flaky_publish = flaky_publish  # "th" → 게시 단계에서 일시 오류
+        self.item_attempts = {}
         self.bucket, self.objects, self.containers, self.calls, self.n = None, {}, {}, [], 0
 
     def new_id(self, prefix):
@@ -62,8 +66,8 @@ def make_server(fake):
             self.end_headers()
             self.wfile.write(data)
 
-        def graph_error(self, msg):
-            self.send(400, {"error": {"message": msg, "type": "OAuthException", "code": 100}})
+        def graph_error(self, msg, transient=False):
+            self.send(400, {"error": {"message": msg, "type": "OAuthException", "code": 2 if transient else 100, "is_transient": transient}})
 
         def do_GET(self):
             u = urllib.parse.urlparse(self.path)
@@ -126,6 +130,14 @@ def make_server(fake):
                 if edge == create:
                     if form.get("is_carousel_item") != "true":
                         return self.graph_error("expected carousel item")
+                    plat = prefix.strip("/")
+                    idx = int(form["image_url"].rsplit("slide-", 1)[1][:2])
+                    fake.item_attempts[(plat, idx)] = fake.item_attempts.get((plat, idx), 0) + 1
+                    if fake.permanent_item_error == (plat, idx):
+                        return self.graph_error("(#100) Invalid parameter")
+                    if fake.flaky_items.get((plat, idx), 0) > 0:
+                        fake.flaky_items[(plat, idx)] -= 1
+                        return self.graph_error("Timeout", transient=True)
                     with urllib.request.urlopen(form["image_url"]) as r:  # 공개 URL에서 실제로 받아 본다
                         if r.headers.get("Content-Type") != "image/jpeg" or r.read(3) != b"\xff\xd8\xff":
                             return self.graph_error("image is not a public JPEG")
@@ -133,6 +145,9 @@ def make_server(fake):
                     fake.containers[cid] = {"kind": "image", "url": form["image_url"], "statuses": ["FINISHED"]}
                     return self.send(200, {"id": cid})
                 if edge == publish:
+                    fake.calls.append(("PUBLISH", prefix.strip("/")))
+                    if fake.flaky_publish == prefix.strip("/"):
+                        return self.graph_error("An unknown error occurred", transient=True)
                     c = fake.containers.get(form.get("creation_id"))
                     if not c or c["kind"] != "carousel" or c["statuses"][0] != "FINISHED":
                         return self.graph_error("container not ready")
@@ -156,7 +171,7 @@ def server():
         env = {"SUPABASE_URL": base, "SUPABASE_SECRET_KEY": SB_KEY, "SUPABASE_BUCKET": "card-news",
                "IG_USER_ID": "17841400000000000", "IG_ACCESS_TOKEN": IG_TOK, "IG_GRAPH_BASE": f"{base}/ig",
                "THREADS_USER_ID": "26000000000000000", "THREADS_ACCESS_TOKEN": TH_TOK, "THREADS_GRAPH_BASE": f"{base}/th",
-               "PUBLISH_POLL_INTERVAL": "0.05", "PUBLISH_POLL_TIMEOUT": "5"}
+               "PUBLISH_POLL_INTERVAL": "0.05", "PUBLISH_POLL_TIMEOUT": "5", "PUBLISH_RETRY_BASE": "0.01", "PUBLISH_ITEM_GAP": "0"}
         return fake, env
 
     yield start
@@ -225,6 +240,50 @@ def test_bad_storage_key_is_fatal_and_redacted(deck, server):
     with pytest.raises(publisher.PublishError) as e:
         publisher.publish_all(deck, env=env, log=quiet)
     assert "이미지 업로드 실패" in str(e.value) and "WRONGKEY" not in str(e.value)
+
+
+def test_transient_item_errors_are_retried(deck, server):
+    fake, env = server(flaky_items={("ig", 3): 2, ("th", 4): 3})
+    out = publisher.publish_all(deck, env=env, log=quiet)
+    assert out["results"]["instagram"]["permalink"] and out["results"]["threads"]["permalink"]
+    assert fake.item_attempts[("ig", 3)] == 3 and fake.item_attempts[("th", 4)] == 4
+
+
+def test_retries_give_up_after_four_attempts(deck, server):
+    fake, env = server(flaky_items={("ig", 2): 9})
+    out = publisher.publish_all(deck, env=env, log=quiet)
+    assert "Timeout" in out["results"]["instagram"]["error"] and fake.item_attempts[("ig", 2)] == 4
+    assert out["results"]["threads"]["permalink"]
+
+
+def test_permanent_errors_are_not_retried(deck, server):
+    fake, env = server(permanent_item_error=("ig", 2))
+    out = publisher.publish_all(deck, env=env, log=quiet)
+    assert "Invalid parameter" in out["results"]["instagram"]["error"] and fake.item_attempts[("ig", 2)] == 1
+
+
+def test_publish_step_is_never_retried(deck, server):
+    fake, env = server(flaky_publish="th")
+    out = publisher.publish_all(deck, env=env, log=quiet)
+    assert "unknown error" in out["results"]["threads"]["error"]
+    assert fake.calls.count(("PUBLISH", "th")) == 1 and out["results"]["instagram"]["permalink"]
+
+
+def test_only_limits_platforms(deck, server):
+    fake, env = server()
+    out = publisher.publish_all(deck, env=env, log=quiet, only=["threads"])
+    assert list(out["results"]) == ["threads"] and out["skipped"] == {}
+    assert ("PUBLISH", "ig") not in fake.calls
+
+
+def test_retry_button_carries_failed_platforms(deck):
+    result = {"results": {"instagram": {"error": "Timeout"}, "threads": {"id": "1", "permalink": "https://t/1"}}, "skipped": {}}
+    retry = messages.failed_platforms(result, ["instagram", "threads"])
+    assert retry == ["instagram"] and messages.failed_platforms({"fatal": "x"}, ["instagram", "threads"]) == ["instagram", "threads"]
+    blocks = messages.build_blocks(deck, "U1", "F1", status=messages.status_result("U1", "now", result), retry=retry)
+    btn = blocks[-1]["elements"][0]
+    assert btn["action_id"] == "retry" and btn["value"] == "test-deck:v2:instagram" and len(btn["confirm"]["text"]["text"]) <= 300
+    assert messages.build_blocks(deck, "U1", "F1", status="done", retry=[])[-1]["type"] == "section"
 
 
 def test_redact():
