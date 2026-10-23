@@ -1,6 +1,6 @@
 # dodo-skills
 
-Reusable AI agent skills for Claude Code and other coding agents. Includes a meeting follow-up email drafter, a voice memo → Notion pipeline, a macOS performance doctor, a product planning interviewer, and a Slack-approved card-news publisher for Instagram and Threads.
+Reusable AI agent skills for Claude Code and other coding agents. Includes a meeting follow-up email drafter, a voice memo → Notion pipeline, a macOS performance doctor, a product planning interviewer, a Slack-approved card-news publisher for Instagram and Threads, and a Korean e-tax-invoice issuer.
 
 [![skills.sh](https://skills.sh/b/callmejustdodo/dodo-skills)](https://skills.sh/callmejustdodo/dodo-skills)
 
@@ -18,6 +18,7 @@ npx skills add callmejustdodo/dodo-skills --skill voice-memo-2-meeting-note
 npx skills add callmejustdodo/dodo-skills --skill mac-lag-doctor
 npx skills add callmejustdodo/dodo-skills --skill product-planning
 npx skills add callmejustdodo/dodo-skills --skill card-news-publish
+npx skills add callmejustdodo/dodo-skills --skill korean-tax-invoice
 ```
 
 ## Skills
@@ -29,6 +30,7 @@ npx skills add callmejustdodo/dodo-skills --skill card-news-publish
 | [`mac-lag-doctor`](./mac-lag-doctor) | Diagnoses macOS lag with evidence — A/B-tests every suspect before blaming it. |
 | [`product-planning`](./product-planning) | Interviews you, writes planning documents, gets mockup approval, and produces an AI implementation plan. |
 | [`card-news-publish`](./card-news-publish) | Sends a Figma card-news deck to Slack for approval and publishes it as an Instagram + Threads carousel on [발행]. |
+| [`korean-tax-invoice`](./korean-tax-invoice) | Issues Korean e-tax invoices (세금계산서) via Bolta, with guards against duplicate and wrong issuance. Vendored from [sdkfile/korean-tax-invoice](https://github.com/sdkfile/korean-tax-invoice). |
 
 ## Prerequisites
 
@@ -41,6 +43,8 @@ npx skills add callmejustdodo/dodo-skills --skill card-news-publish
 | `python3` + `elevenlabs` SDK | voice-memo-2-meeting-note | `pip install elevenlabs` |
 | [`uv`](https://docs.astral.sh/uv/) | card-news-publish | `brew install uv` |
 | Slack app (Socket Mode), Meta Instagram/Threads tokens, Supabase project | card-news-publish | See [`card-news-publish/SKILL.md`](./card-news-publish/SKILL.md); keys go in `card-news-publish/.env` |
+| Node.js 18+ + one-time build | korean-tax-invoice | `cd korean-tax-invoice && npm install && npm run build` |
+| `BOLTA_API_KEY` | korean-tax-invoice | [Bolta](https://app.bolta.io) → 개발자센터 → API 키 (`test_` = virtual, `live_` = real) |
 
 ## Setup
 
@@ -144,6 +148,21 @@ The skill:
 3. On [발행] (after a confirm dialog), uploads the slides to a Supabase public bucket and publishes an Instagram and a Threads carousel, then updates the Slack message with links
 
 Keys live in a gitignored `card-news-publish/.env` (template: `card-news-publish/.env.example`). Missing platform keys make [발행] skip that platform and say why.
+
+### korean-tax-invoice
+
+Trigger by saying things like:
+- "고객사에 9월 이용료 50만원 세금계산서 발행해줘"
+- "볼타로 세금계산서 발행하려는데 준비됐는지 봐줘"
+
+Vendored as-is from [sdkfile/korean-tax-invoice](https://github.com/sdkfile/korean-tax-invoice) (MIT, commit `74eaddf`). Build once after cloning — the scripts import `dist/`:
+
+```bash
+cd korean-tax-invoice && npm install && npm run build
+export BOLTA_API_KEY=test_xxxxx
+```
+
+The skill runs a preflight, validates the request, shows you exactly what will be issued, and only issues with `--confirm` after you say yes. The scripts read `BOLTA_API_KEY` from the shell environment; they do not load `.env` on their own.
 
 ## Config (`.env`)
 

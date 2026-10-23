@@ -1,0 +1,41 @@
+{
+  "invoiceId": "inv-2026-09-001",
+  "referencePrefix": "myapp",
+  "verified": true,
+
+  "supplier": {
+    "identificationNumber": "243-13-02906",
+    "organizationName": "널포인터스튜디오",
+    "representativeName": "김성구 외 1 명",
+    "address": "서울특별시 마포구 와우산로 105",
+    "businessType": "정보통신업",
+    "businessItem": "응용 소프트웨어 개발 및 공급업",
+    "contact": {
+      "email": "ops@example.com",
+      "name": "정산 담당"
+    }
+  },
+
+  "buyer": {
+    "identificationNumber": "220-81-62517",
+    "organizationName": "고객사 주식회사",
+    "representativeName": "홍길동",
+    "address": "서울특별시 강남구 테헤란로 1",
+    "businessType": "도소매업",
+    "businessItem": "전자상거래업",
+    "contacts": [
+      { "email": "tax@client.co.kr", "name": "경리팀" }
+    ]
+  },
+
+  "items": [
+    {
+      "name": "SaaS 이용료",
+      "supplyCost": 100000
+    }
+  ],
+
+  "_writeDate": "생략하면 오늘(KST). 넣을 때는 과거이거나 오늘이어야 한다",
+  "purpose": "CLAIM",
+  "taxType": "TAXABLE"
+}
