@@ -79,7 +79,7 @@ Then look for earlier debriefs with the same client:
 grep -l "^company: <고객사>" "$OBSIDIAN_VAULT/50 Meetings/"*.md 2>/dev/null
 ```
 
-If there are any, read the latest one's 허들 and 후속 액션 sections. You will compare against them in Step 6.
+If there are any, read the latest one's 허들 and 추천 액션 아이템 sections (older notes call it 후속 액션). You will compare against them in Step 6.
 
 ## Step 2 — Transcribe
 
@@ -164,7 +164,8 @@ Rules that matter most:
 
 ## Step 7 — Actions, message draft, self-feedback
 
-**후속 액션** — 3–6 checkboxes, highest priority first:
+**추천 액션 아이템** — 3–6 checkboxes, highest priority first. This section goes at the top of the note,
+right under the TL;DR and before the minutes:
 - Commitments the user made on the call come first (e.g. "사례 자료 오늘 메일").
 - Every action names the hurdle it addresses `(→ H1)` or the commitment it fulfills.
 - Owner, absolute date (computed from the call date), channel.
